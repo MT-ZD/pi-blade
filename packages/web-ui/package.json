@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "ORIGIN=http://piblade-master.local:5173 node build"
   },
   "dependencies": {
     "@pi-blade/shared": "workspace:*"

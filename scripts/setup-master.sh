@@ -118,11 +118,34 @@ fi
 
 cd "$INSTALL_DIR"
 bun install
+bun run --filter web-ui build
 
 # Configure nginx
 sudo tee /etc/nginx/conf.d/pi-blade.conf > /dev/null <<EOF
 # Pi-Blade managed config — will be regenerated automatically
 # Initial empty config
+EOF
+
+sudo tee /etc/nginx/conf.d/pi-blade-dashboard.conf > /dev/null <<EOF
+server {
+    listen 80;
+    server_name ${MASTER_NAME}.local;
+
+    location /api {
+        proxy_pass http://127.0.0.1:${MASTER_PORT};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:5173;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
 EOF
 
 sudo nginx -t && sudo systemctl reload nginx
@@ -166,17 +189,37 @@ Environment=PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin
 WantedBy=multi-user.target
 EOF
 
+sudo tee /etc/systemd/system/pi-blade-web.service > /dev/null <<EOF
+[Unit]
+Description=Pi-Blade Web UI
+After=network.target pi-blade-master.service
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=${INSTALL_DIR}/packages/web-ui
+ExecStart=$(which node || echo "/usr/local/bin/node") build
+Restart=always
+RestartSec=5
+Environment=PORT=5173
+Environment=ORIGIN=http://${MASTER_NAME}.local:5173
+Environment=PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 sudo systemctl daemon-reload
-sudo systemctl enable pi-blade-master pi-blade-agent
-sudo systemctl start pi-blade-master pi-blade-agent
+sudo systemctl enable pi-blade-master pi-blade-agent pi-blade-web
+sudo systemctl restart pi-blade-master pi-blade-agent pi-blade-web
 
 echo ""
 echo "==============================="
 echo "  Master setup complete!"
 echo "  Hostname: ${MASTER_NAME}.local"
-echo "  API: http://${MASTER_NAME}.local:${MASTER_PORT}"
+echo "  Dashboard: http://${MASTER_NAME}.local"
+echo "  API: http://${MASTER_NAME}.local/api"
 echo "  Registry: localhost:${REGISTRY_PORT}"
-echo "  Web UI: http://${MASTER_NAME}.local:5173 (dev)"
 echo ""
 echo "  Next: Set up Cloudflare Tunnel"
 echo "  Run: cloudflared tunnel login"
