@@ -47,7 +47,7 @@ pi-blade/
 ### Master
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/MT-ZD/pi-blade/master/scripts/setup-master.sh?$(date +%s)" | bash
+curl -fsSL -H "Cache-Control: no-cache" https://raw.githubusercontent.com/MT-ZD/pi-blade/master/scripts/setup-master.sh | bash
 ```
 
 The setup script installs all dependencies (Docker, Bun, nginx, avahi), clones the repo, and runs `bun install` automatically.

@@ -154,6 +154,8 @@ server {
 }
 EOF
 
+# Remove default nginx site that catches all requests
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 
 # Create systemd services
