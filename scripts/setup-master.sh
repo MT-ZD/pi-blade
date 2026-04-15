@@ -108,10 +108,12 @@ INSTALL_DIR="/opt/pi-blade"
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown "$USER:$USER" "$INSTALL_DIR"
 
+REPO_URL="https://github.com/MT-ZD/pi-blade.git"
+
 if [ -d "$INSTALL_DIR/.git" ]; then
   cd "$INSTALL_DIR" && git pull
 else
-  echo "Copy the pi-blade project to ${INSTALL_DIR}"
+  git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
 cd "$INSTALL_DIR"
