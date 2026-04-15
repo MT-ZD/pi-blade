@@ -24,8 +24,14 @@ if ! command -v docker &> /dev/null; then
   echo "[1/7] Installing Docker..."
   curl -fsSL https://get.docker.com | sh
   sudo usermod -aG docker "$USER"
+  DOCKER_GROUP_ADDED=1
 else
   echo "[1/7] Docker already installed"
+fi
+
+# Use sg to run docker commands with group membership if just added
+if [ "${DOCKER_GROUP_ADDED:-0}" = "1" ]; then
+  docker() { sg docker -c "docker $*"; }
 fi
 
 # Install Bun
@@ -63,6 +69,10 @@ fi
 # Set hostname
 echo "[5/7] Setting hostname to ${MASTER_NAME}..."
 sudo hostnamectl set-hostname "$MASTER_NAME"
+if ! grep -q "127.0.1.1.*${MASTER_NAME}" /etc/hosts; then
+  sudo sed -i "/127\.0\.1\.1/d" /etc/hosts
+  echo "127.0.1.1 ${MASTER_NAME}" | sudo tee -a /etc/hosts > /dev/null
+fi
 sudo systemctl restart avahi-daemon
 
 # Start local Docker registry

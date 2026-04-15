@@ -47,9 +47,10 @@ pi-blade/
 ### Master
 
 ```bash
-bun install
 ./scripts/setup-master.sh
 ```
+
+The setup script installs all dependencies (Docker, Bun, nginx, avahi) and runs `bun install` automatically.
 
 ### Adding a Blade
 
