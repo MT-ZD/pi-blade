@@ -205,12 +205,12 @@ After=network.target pi-blade-master.service
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=${INSTALL_DIR}/packages/web-ui
-ExecStart=$(which node || echo "/usr/local/bin/node") build
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=$(which bun || echo "$HOME/.bun/bin/bun") run --cwd packages/web-ui start
 Restart=always
 RestartSec=5
 Environment=PORT=5173
-Environment=ORIGIN=http://${MASTER_NAME}.local:5173
+Environment=ORIGIN=http://${MASTER_NAME}.local
 Environment=PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin
 
 [Install]
