@@ -1,0 +1,76 @@
+import { getDb } from "../db.ts";
+
+export async function handleRoutingRoutes(req: Request, path: string): Promise<Response | null> {
+  const db = getDb();
+
+  if (req.method === "GET" && path === "/api/routes") {
+    const routes = db.query(`
+      SELECT r.*, p.name as project_name,
+        json_group_array(json_object(
+          'id', u.id, 'bladeId', u.blade_id, 'port', u.port, 'weight', u.weight,
+          'bladeName', b.name, 'bladeHostname', b.hostname
+        )) as upstreams
+      FROM routes r
+      JOIN projects p ON p.id = r.project_id
+      LEFT JOIN upstreams u ON u.route_id = r.id
+      LEFT JOIN blades b ON b.id = u.blade_id
+      GROUP BY r.id
+      ORDER BY r.domain
+    `).all();
+
+    return Response.json(
+      (routes as any[]).map((r) => ({
+        ...r,
+        upstreams: JSON.parse(r.upstreams),
+      }))
+    );
+  }
+
+  if (req.method === "POST" && path === "/api/routes") {
+    const body = await req.json() as {
+      domain: string;
+      projectId: number;
+      upstreams?: { bladeId: number; port: number; weight?: number }[];
+    };
+
+    const result = db.query(
+      "INSERT INTO routes (domain, project_id) VALUES (?1, ?2)"
+    ).run(body.domain, body.projectId);
+
+    const routeId = result.lastInsertRowid;
+
+    if (body.upstreams) {
+      const stmt = db.query(
+        "INSERT INTO upstreams (route_id, blade_id, port, weight) VALUES (?1, ?2, ?3, ?4)"
+      );
+      for (const u of body.upstreams) {
+        stmt.run(routeId, u.bladeId, u.port, u.weight || 1);
+      }
+    }
+
+    return Response.json({ ok: true, id: routeId });
+  }
+
+  if (req.method === "POST" && path.match(/^\/api\/routes\/\d+\/upstreams$/)) {
+    const routeId = parseInt(path.split("/")[3]);
+    const body = await req.json() as { bladeId: number; port: number; weight?: number };
+    const result = db.query(
+      "INSERT INTO upstreams (route_id, blade_id, port, weight) VALUES (?1, ?2, ?3, ?4)"
+    ).run(routeId, body.bladeId, body.port, body.weight || 1);
+    return Response.json({ ok: true, id: result.lastInsertRowid });
+  }
+
+  if (req.method === "DELETE" && path.match(/^\/api\/routes\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    db.query("DELETE FROM routes WHERE id = ?").run(id);
+    return Response.json({ ok: true });
+  }
+
+  if (req.method === "DELETE" && path.match(/^\/api\/upstreams\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    db.query("DELETE FROM upstreams WHERE id = ?").run(id);
+    return Response.json({ ok: true });
+  }
+
+  return null;
+}

@@ -1,0 +1,30 @@
+node_modules/
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Build output
+dist/
+.svelte-kit/
+build/
+
+# Environment
+.env
+.env.*
+
+# Docker build temps
+/tmp/pi-blade-build/
+/tmp/pi-blade-repos/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

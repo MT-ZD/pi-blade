@@ -1,0 +1,12 @@
+{
+  "name": "@pi-blade/blade-agent",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@pi-blade/shared": "workspace:*"
+  }
+}

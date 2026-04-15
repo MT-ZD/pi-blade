@@ -1,0 +1,86 @@
+const BASE = '/api';
+
+async function request<T>(path: string, opts?: RequestInit): Promise<T> {
+	const res = await fetch(`${BASE}${path}`, {
+		headers: { 'Content-Type': 'application/json' },
+		...opts
+	});
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({ error: res.statusText }));
+		throw new Error(err.error || res.statusText);
+	}
+	return res.json();
+}
+
+export const api = {
+	blades: {
+		list: () => request<any[]>('/blades'),
+		remove: (id: number) => request('/blades/' + id, { method: 'DELETE' })
+	},
+	repos: {
+		list: () => request<any[]>('/repos'),
+		create: (data: any) => request('/repos', { method: 'POST', body: JSON.stringify(data) }),
+		update: (id: number, data: any) =>
+			request('/repos/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+		remove: (id: number) => request('/repos/' + id, { method: 'DELETE' })
+	},
+	projects: {
+		list: () => request<any[]>('/projects'),
+		get: (id: number) => request<any>('/projects/' + id),
+		create: (data: any) =>
+			request('/projects', { method: 'POST', body: JSON.stringify(data) }),
+		remove: (id: number) => request('/projects/' + id, { method: 'DELETE' }),
+		deploy: (id: number) =>
+			request('/projects/' + id + '/deploy', { method: 'POST' })
+	},
+	routes: {
+		list: () => request<any[]>('/routes'),
+		create: (data: any) =>
+			request('/routes', { method: 'POST', body: JSON.stringify(data) }),
+		remove: (id: number) => request('/routes/' + id, { method: 'DELETE' }),
+		addUpstream: (routeId: number, data: any) =>
+			request('/routes/' + routeId + '/upstreams', {
+				method: 'POST',
+				body: JSON.stringify(data)
+			}),
+		removeUpstream: (id: number) => request('/upstreams/' + id, { method: 'DELETE' })
+	},
+	envGroups: {
+		list: () => request<any[]>('/env-groups'),
+		get: (id: number) => request<any>('/env-groups/' + id),
+		create: (data: any) =>
+			request('/env-groups', { method: 'POST', body: JSON.stringify(data) }),
+		remove: (id: number) => request('/env-groups/' + id, { method: 'DELETE' }),
+		addVar: (groupId: number, data: any) =>
+			request('/env-groups/' + groupId + '/vars', {
+				method: 'POST',
+				body: JSON.stringify(data)
+			}),
+		updateVar: (id: number, data: any) =>
+			request('/env-vars/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+		removeVar: (id: number) => request('/env-vars/' + id, { method: 'DELETE' })
+	},
+	deploys: {
+		list: () => request<any[]>('/deploys'),
+		byProject: (id: number) => request<any[]>('/deploys/project/' + id)
+	},
+	alerts: {
+		list: () => request<any[]>('/alerts')
+	},
+	metrics: {
+		all: () => request<Record<string, any>>('/metrics')
+	},
+	rollback: (data: { projectId: number; bladeId: number; imageTag: string }) =>
+		request('/rollback', { method: 'POST', body: JSON.stringify(data) }),
+	nginx: {
+		reload: () => request('/nginx/reload', { method: 'POST' })
+	},
+	discord: {
+		get: () => request<{ url: string }>('/settings/discord-webhook'),
+		set: (url: string) =>
+			request('/settings/discord-webhook', {
+				method: 'PUT',
+				body: JSON.stringify({ url })
+			})
+	}
+};

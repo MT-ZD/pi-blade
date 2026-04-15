@@ -1,0 +1,171 @@
+#!/bin/bash
+set -e
+
+MASTER_NAME="piblade-master"
+MASTER_PORT=3000
+REGISTRY_PORT=5000
+
+echo "==============================="
+echo "  Pi-Blade — Master Setup"
+echo "==============================="
+echo ""
+
+# Detect OS
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
+  OS=$ID
+else
+  echo "Unsupported OS"
+  exit 1
+fi
+
+# Install Docker
+if ! command -v docker &> /dev/null; then
+  echo "[1/7] Installing Docker..."
+  curl -fsSL https://get.docker.com | sh
+  sudo usermod -aG docker "$USER"
+else
+  echo "[1/7] Docker already installed"
+fi
+
+# Install Bun
+if ! command -v bun &> /dev/null; then
+  echo "[2/7] Installing Bun..."
+  curl -fsSL https://bun.sh/install | bash
+  export PATH="$HOME/.bun/bin:$PATH"
+else
+  echo "[2/7] Bun already installed"
+fi
+
+# Install nginx
+if ! command -v nginx &> /dev/null; then
+  echo "[3/7] Installing nginx..."
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq nginx
+else
+  echo "[3/7] nginx already installed"
+fi
+
+# Install avahi-daemon for mDNS
+if ! command -v avahi-daemon &> /dev/null; then
+  echo "[4/7] Installing avahi-daemon..."
+  sudo apt-get install -y -qq avahi-daemon avahi-utils
+else
+  echo "[4/7] avahi-daemon already installed"
+fi
+
+# Install git
+if ! command -v git &> /dev/null; then
+  echo "Installing git..."
+  sudo apt-get install -y -qq git
+fi
+
+# Set hostname
+echo "[5/7] Setting hostname to ${MASTER_NAME}..."
+sudo hostnamectl set-hostname "$MASTER_NAME"
+sudo systemctl restart avahi-daemon
+
+# Start local Docker registry
+echo "[6/7] Starting local Docker registry..."
+if ! docker ps --format '{{.Names}}' | grep -q '^pi-blade-registry$'; then
+  docker run -d \
+    --name pi-blade-registry \
+    --restart unless-stopped \
+    -p ${REGISTRY_PORT}:5000 \
+    registry:2
+  echo "Registry started on port ${REGISTRY_PORT}"
+else
+  echo "Registry already running"
+fi
+
+# Configure Docker to allow insecure local registry
+DAEMON_JSON="/etc/docker/daemon.json"
+if [ ! -f "$DAEMON_JSON" ] || ! grep -q "localhost:${REGISTRY_PORT}" "$DAEMON_JSON"; then
+  echo "Configuring Docker for local registry..."
+  sudo mkdir -p /etc/docker
+  sudo tee "$DAEMON_JSON" > /dev/null <<EOF
+{
+  "insecure-registries": ["localhost:${REGISTRY_PORT}", "${MASTER_NAME}.local:${REGISTRY_PORT}"]
+}
+EOF
+  sudo systemctl restart docker
+fi
+
+# Install Pi-Blade
+echo "[7/7] Installing Pi-Blade..."
+
+INSTALL_DIR="/opt/pi-blade"
+sudo mkdir -p "$INSTALL_DIR"
+sudo chown "$USER:$USER" "$INSTALL_DIR"
+
+if [ -d "$INSTALL_DIR/.git" ]; then
+  cd "$INSTALL_DIR" && git pull
+else
+  echo "Copy the pi-blade project to ${INSTALL_DIR}"
+fi
+
+cd "$INSTALL_DIR"
+bun install
+
+# Configure nginx
+sudo tee /etc/nginx/conf.d/pi-blade.conf > /dev/null <<EOF
+# Pi-Blade managed config — will be regenerated automatically
+# Initial empty config
+EOF
+
+sudo nginx -t && sudo systemctl reload nginx
+
+# Create systemd services
+sudo tee /etc/systemd/system/pi-blade-master.service > /dev/null <<EOF
+[Unit]
+Description=Pi-Blade Master
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=$(which bun || echo "$HOME/.bun/bin/bun") run --filter master start
+Restart=always
+RestartSec=5
+Environment=PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo tee /etc/systemd/system/pi-blade-agent.service > /dev/null <<EOF
+[Unit]
+Description=Pi-Blade Agent (Master as Blade)
+After=network.target docker.service pi-blade-master.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=$(which bun || echo "$HOME/.bun/bin/bun") run --filter blade-agent start
+Restart=always
+RestartSec=5
+Environment=PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable pi-blade-master pi-blade-agent
+sudo systemctl start pi-blade-master pi-blade-agent
+
+echo ""
+echo "==============================="
+echo "  Master setup complete!"
+echo "  Hostname: ${MASTER_NAME}.local"
+echo "  API: http://${MASTER_NAME}.local:${MASTER_PORT}"
+echo "  Registry: localhost:${REGISTRY_PORT}"
+echo "  Web UI: http://${MASTER_NAME}.local:5173 (dev)"
+echo ""
+echo "  Next: Set up Cloudflare Tunnel"
+echo "  Run: cloudflared tunnel login"
+echo "==============================="
