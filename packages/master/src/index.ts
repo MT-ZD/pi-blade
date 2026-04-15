@@ -1,4 +1,4 @@
-import { MASTER_PORT } from "@pi-blade/shared";
+import { MASTER_PORT, getVersion, getVersionShort } from "@pi-blade/shared";
 import { handleBladeRoutes } from "./routes/blades.ts";
 import { handleRepoRoutes } from "./routes/repos.ts";
 import { handleProjectRoutes } from "./routes/projects.ts";
@@ -9,6 +9,7 @@ import { handleAlertRoutes } from "./routes/alerts.ts";
 import { handleActionRoutes } from "./routes/actions.ts";
 import { startPoller } from "./services/git-poller.ts";
 import { startMonitor } from "./services/monitor.ts";
+import { startUpdater } from "./services/updater.ts";
 
 const handlers = [
   handleBladeRoutes,
@@ -34,6 +35,10 @@ const server = Bun.serve({
       });
     }
 
+    if (path === "/api/version") {
+      return Response.json({ version: getVersion(), short: getVersionShort() });
+    }
+
     for (const handler of handlers) {
       const response = await handler(req, path);
       if (response) return response;
@@ -46,3 +51,4 @@ const server = Bun.serve({
 console.log(`Pi-Blade master running on port ${MASTER_PORT}`);
 startPoller();
 startMonitor();
+startUpdater();

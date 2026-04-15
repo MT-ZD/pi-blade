@@ -3,14 +3,16 @@ import { REGISTRY_PORT, BLADE_AGENT_PORT } from "@pi-blade/shared";
 import type { DeployRequest } from "@pi-blade/shared";
 import { sendDiscordAlert } from "../routes/alerts.ts";
 import { postCommitStatus } from "./github.ts";
+import { sshEnvForRepo, cleanupSshKey } from "../lib/ssh.ts";
 
 const REGISTRY = `localhost:${REGISTRY_PORT}`;
 
-async function runCmd(cmd: string[], opts?: { cwd?: string }): Promise<string> {
+async function runCmd(cmd: string[], opts?: { cwd?: string; env?: Record<string, string> }): Promise<string> {
   const proc = Bun.spawn(cmd, {
     stdout: "pipe",
     stderr: "pipe",
     cwd: opts?.cwd,
+    env: opts?.env ? { ...process.env, ...opts.env } : undefined,
   });
   const stdout = await new Response(proc.stdout).text();
   const exitCode = await proc.exited;
@@ -53,9 +55,10 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string)
     context: `pi-blade/${project.name}`,
   });
 
+  const sshEnv = sshEnvForRepo(repo);
   try {
     console.log(`[builder] Cloning ${repo.url} for "${project.name}"`);
-    await runCmd(["git", "clone", "--depth", "1", "--branch", repo.branch, repo.url, cloneDir]);
+    await runCmd(["git", "clone", "--depth", "1", "--branch", repo.branch, repo.url, cloneDir], { env: sshEnv });
 
     const buildContext = `${cloneDir}/${project.path}`;
     const dockerfilePath = `${buildContext}/${project.dockerfile_path}`;
@@ -161,6 +164,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string)
     });
   } finally {
     await runCmd(["rm", "-rf", cloneDir]).catch(() => {});
+    cleanupSshKey(repo.id);
   }
 }
 

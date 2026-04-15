@@ -22,7 +22,11 @@ export const api = {
 		create: (data: any) => request('/repos', { method: 'POST', body: JSON.stringify(data) }),
 		update: (id: number, data: any) =>
 			request('/repos/' + id, { method: 'PUT', body: JSON.stringify(data) }),
-		remove: (id: number) => request('/repos/' + id, { method: 'DELETE' })
+		remove: (id: number) => request('/repos/' + id, { method: 'DELETE' }),
+		generateKey: (id: number) =>
+			request<{ publicKey: string }>('/repos/' + id + '/generate-key', { method: 'POST' }),
+		getPublicKey: (id: number) =>
+			request<{ publicKey: string }>('/repos/' + id + '/public-key')
 	},
 	projects: {
 		list: () => request<any[]>('/projects'),
@@ -75,6 +79,7 @@ export const api = {
 	nginx: {
 		reload: () => request('/nginx/reload', { method: 'POST' })
 	},
+	version: () => request<{ version: string; short: string }>('/version'),
 	discord: {
 		get: () => request<{ url: string }>('/settings/discord-webhook'),
 		set: (url: string) =>

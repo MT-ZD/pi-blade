@@ -1,12 +1,17 @@
 import { getDb } from "../db.ts";
-import { BLADE_AGENT_PORT, METRICS_INTERVAL_MS } from "@pi-blade/shared";
+import { BLADE_AGENT_PORT, METRICS_INTERVAL_MS, getVersion } from "@pi-blade/shared";
 import type { BladeMetrics } from "@pi-blade/shared";
 import { sendDiscordAlert } from "../routes/alerts.ts";
 
 const latestMetrics = new Map<number, BladeMetrics>();
+const bladeVersions = new Map<number, string>();
 
 export function getLatestMetrics(): Map<number, BladeMetrics> {
   return latestMetrics;
+}
+
+export function getBladeVersions(): Map<number, string> {
+  return bladeVersions;
 }
 
 async function checkBlade(blade: any) {
@@ -23,6 +28,21 @@ async function checkBlade(blade: any) {
 
     const metrics = (await res.json()) as BladeMetrics;
     latestMetrics.set(blade.id, metrics);
+
+    try {
+      const vRes = await fetch(`http://${blade.hostname}:${BLADE_AGENT_PORT}/version`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (vRes.ok) {
+        const { version } = (await vRes.json()) as { version: string };
+        bladeVersions.set(blade.id, version);
+
+        const masterVersion = getVersion();
+        if (version !== masterVersion && version !== "unknown") {
+          console.log(`[monitor] Blade "${blade.name}" version mismatch: ${version.slice(0, 12)} (master: ${masterVersion.slice(0, 12)})`);
+        }
+      }
+    } catch {}
 
     const db = getDb();
 

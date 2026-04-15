@@ -65,23 +65,23 @@ echo "[4/5] Setting hostname to ${BLADE_NAME}..."
 sudo hostnamectl set-hostname "$BLADE_NAME"
 sudo systemctl restart avahi-daemon
 
-# Install and start blade agent
-echo "[5/5] Installing blade agent..."
+# Install pi-blade repo
+echo "[5/5] Installing pi-blade..."
 
-AGENT_DIR="/opt/pi-blade/blade-agent"
-sudo mkdir -p "$AGENT_DIR"
+INSTALL_DIR="/opt/pi-blade"
+REPO_URL="https://github.com/MT-ZD/pi-blade.git"
 
-# Download blade agent from master
-curl -fsSL "http://${MASTER_HOST}:${MASTER_PORT}/api/blade-agent/bundle" -o /tmp/blade-agent.tar.gz 2>/dev/null || true
+sudo mkdir -p "$INSTALL_DIR"
+sudo chown "$USER:$USER" "$INSTALL_DIR"
 
-# If bundle not available, clone from repo
-if [ ! -f /tmp/blade-agent.tar.gz ] || [ ! -s /tmp/blade-agent.tar.gz ]; then
-  echo "Downloading blade agent source..."
-  sudo git clone --depth 1 "http://${MASTER_HOST}:${MASTER_PORT}/repo" "$AGENT_DIR" 2>/dev/null || {
-    echo "Note: Could not download agent bundle. Manual setup may be required."
-    echo "Copy the blade-agent package to ${AGENT_DIR}"
-  }
+if [ -d "$INSTALL_DIR/.git" ]; then
+  cd "$INSTALL_DIR" && git pull
+else
+  git clone "$REPO_URL" "$INSTALL_DIR"
 fi
+
+cd "$INSTALL_DIR"
+bun install
 
 # Create systemd service
 sudo tee /etc/systemd/system/pi-blade-agent.service > /dev/null <<EOF
@@ -93,8 +93,8 @@ Requires=docker.service
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=${AGENT_DIR}
-ExecStart=$(which bun || echo "$HOME/.bun/bin/bun") run start
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=$(which bun || echo "$HOME/.bun/bin/bun") run --cwd packages/blade-agent start
 Restart=always
 RestartSec=5
 Environment=PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin

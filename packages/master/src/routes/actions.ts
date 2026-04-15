@@ -1,7 +1,7 @@
 import { getDb } from "../db.ts";
 import { buildAndDeploy, triggerRollback } from "../services/builder.ts";
 import { regenerateNginxConfig } from "../services/nginx.ts";
-import { getLatestMetrics } from "../services/monitor.ts";
+import { getLatestMetrics, getBladeVersions } from "../services/monitor.ts";
 
 export async function handleActionRoutes(req: Request, path: string): Promise<Response | null> {
   const db = getDb();
@@ -48,9 +48,10 @@ export async function handleActionRoutes(req: Request, path: string): Promise<Re
 
   if (req.method === "GET" && path === "/api/metrics") {
     const metrics = getLatestMetrics();
+    const versions = getBladeVersions();
     const result: Record<string, any> = {};
     for (const [bladeId, m] of metrics) {
-      result[bladeId] = m;
+      result[bladeId] = { ...m, version: versions.get(bladeId) };
     }
     return Response.json(result);
   }

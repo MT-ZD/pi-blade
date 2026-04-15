@@ -1,12 +1,14 @@
 import { getDb } from "../db.ts";
 import { buildAndDeploy } from "./builder.ts";
+import { sshEnvForRepo, cleanupSshKey } from "../lib/ssh.ts";
 
 const lastKnownCommits = new Map<number, string>();
 
-async function getLatestCommit(url: string, branch: string): Promise<string> {
+async function getLatestCommit(url: string, branch: string, env?: Record<string, string>): Promise<string> {
   const proc = Bun.spawn(["git", "ls-remote", url, `refs/heads/${branch}`], {
     stdout: "pipe",
     stderr: "pipe",
+    env: env ? { ...process.env, ...env } : undefined,
   });
   const output = await new Response(proc.stdout).text();
   return output.split("\t")[0] || "";
@@ -22,44 +24,50 @@ async function getChangedPaths(repoDir: string, oldCommit: string, newCommit: st
 }
 
 async function pollRepo(repo: any) {
-  const latestCommit = await getLatestCommit(repo.url, repo.branch);
-  if (!latestCommit) return;
+  const sshEnv = sshEnvForRepo(repo);
+  try {
+    const latestCommit = await getLatestCommit(repo.url, repo.branch, sshEnv);
+    if (!latestCommit) return;
 
-  const previousCommit = lastKnownCommits.get(repo.id);
-  if (previousCommit === latestCommit) return;
+    const previousCommit = lastKnownCommits.get(repo.id);
+    if (previousCommit === latestCommit) return;
 
-  console.log(`[poller] Change detected in repo ${repo.url}: ${latestCommit.slice(0, 8)}`);
-  lastKnownCommits.set(repo.id, latestCommit);
+    console.log(`[poller] Change detected in repo ${repo.url}: ${latestCommit.slice(0, 8)}`);
+    lastKnownCommits.set(repo.id, latestCommit);
 
-  if (!previousCommit) return;
+    if (!previousCommit) return;
 
-  const db = getDb();
-  const projects = db.query(
-    "SELECT * FROM projects WHERE repo_id = ?"
-  ).all(repo.id) as any[];
+    const db = getDb();
+    const projects = db.query(
+      "SELECT * FROM projects WHERE repo_id = ?"
+    ).all(repo.id) as any[];
 
-  if (repo.is_monorepo && previousCommit) {
-    const repoDir = `/tmp/pi-blade-repos/${repo.id}`;
-    const cloneProc = Bun.spawn(["git", "clone", "--bare", repo.url, repoDir], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    await cloneProc.exited;
+    if (repo.is_monorepo && previousCommit) {
+      const repoDir = `/tmp/pi-blade-repos/${repo.id}`;
+      const cloneProc = Bun.spawn(["git", "clone", "--bare", repo.url, repoDir], {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: sshEnv ? { ...process.env, ...sshEnv } : undefined,
+      });
+      await cloneProc.exited;
 
-    const changedPaths = await getChangedPaths(repoDir, previousCommit, latestCommit);
+      const changedPaths = await getChangedPaths(repoDir, previousCommit, latestCommit);
 
-    for (const project of projects) {
-      const affected = changedPaths.some((p) => p.startsWith(project.path));
-      if (affected) {
-        console.log(`[poller] Project "${project.name}" affected, triggering build`);
+      for (const project of projects) {
+        const affected = changedPaths.some((p) => p.startsWith(project.path));
+        if (affected) {
+          console.log(`[poller] Project "${project.name}" affected, triggering build`);
+          await buildAndDeploy(project, repo, latestCommit);
+        }
+      }
+    } else {
+      for (const project of projects) {
+        console.log(`[poller] Triggering build for "${project.name}"`);
         await buildAndDeploy(project, repo, latestCommit);
       }
     }
-  } else {
-    for (const project of projects) {
-      console.log(`[poller] Triggering build for "${project.name}"`);
-      await buildAndDeploy(project, repo, latestCommit);
-    }
+  } finally {
+    cleanupSshKey(repo.id);
   }
 }
 

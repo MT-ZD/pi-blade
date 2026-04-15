@@ -4,15 +4,17 @@
 
 	let blades = $state<any[]>([]);
 	let metrics = $state<Record<string, any>>({});
+	let masterVersion = $state('');
 
 	onMount(async () => {
 		await refresh();
 	});
 
 	async function refresh() {
-		const [b, m] = await Promise.all([api.blades.list(), api.metrics.all()]);
+		const [b, m, v] = await Promise.all([api.blades.list(), api.metrics.all(), api.version()]);
 		blades = b;
 		metrics = m;
+		masterVersion = v.short;
 	}
 
 	async function removeBlade(id: number) {
@@ -30,7 +32,12 @@
 
 <div class="flex justify-between items-center mb-2">
 	<h1>Blades</h1>
-	<button class="secondary" onclick={refresh}>Refresh</button>
+	<div class="flex items-center gap-1">
+		{#if masterVersion}
+			<span class="text-sm text-muted">master: {masterVersion}</span>
+		{/if}
+		<button class="secondary" onclick={refresh}>Refresh</button>
+	</div>
 </div>
 
 <div class="grid grid-3">
@@ -41,7 +48,16 @@
 				<h3>{blade.name}</h3>
 				<span class="badge {blade.status}">{blade.status}</span>
 			</div>
-			<div class="text-sm text-muted mb-2">{blade.hostname}</div>
+			<div class="text-sm text-muted mb-1">{blade.hostname}</div>
+			{#if m?.version}
+				{@const bladeV = m.version.slice(0, 12)}
+				<div class="text-sm mb-2" style="font-family:monospace">
+					{bladeV}
+					{#if masterVersion && bladeV !== masterVersion}
+						<span style="color:var(--warning)" title="Version mismatch with master"> !</span>
+					{/if}
+				</div>
+			{/if}
 
 			{#if m}
 				<div class="mb-1">

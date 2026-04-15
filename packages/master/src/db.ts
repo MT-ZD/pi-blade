@@ -100,4 +100,8 @@ function migrate(db: Database) {
       value TEXT NOT NULL
     );
   `);
+
+  try {
+    db.exec("ALTER TABLE repos ADD COLUMN ssh_key TEXT");
+  } catch (_) {}
 }

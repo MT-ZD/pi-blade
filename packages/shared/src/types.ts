@@ -104,6 +104,7 @@ export interface RollbackRequest {
 export interface RegisterRequest {
   name: string;
   hostname: string;
+  version?: string;
 }
 
 export interface BladeStatus {
