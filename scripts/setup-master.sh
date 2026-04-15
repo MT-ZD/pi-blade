@@ -116,6 +116,12 @@ else
   git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
+# Re-exec from repo copy so the rest of the script is always up to date
+if [ "${PI_BLADE_REEXEC:-0}" != "1" ]; then
+  export PI_BLADE_REEXEC=1
+  exec bash "$INSTALL_DIR/scripts/setup-master.sh"
+fi
+
 cd "$INSTALL_DIR"
 bun install
 cd "$INSTALL_DIR/packages/web-ui" && bun run build && cd "$INSTALL_DIR"
