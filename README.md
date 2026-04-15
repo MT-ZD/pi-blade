@@ -47,7 +47,7 @@ pi-blade/
 ### Master
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MT-ZD/pi-blade/master/scripts/setup-master.sh | bash
+curl -fsSL "https://raw.githubusercontent.com/MT-ZD/pi-blade/master/scripts/setup-master.sh?$(date +%s)" | bash
 ```
 
 The setup script installs all dependencies (Docker, Bun, nginx, avahi), clones the repo, and runs `bun install` automatically.
@@ -66,9 +66,9 @@ The setup script is interactive and will prompt for the blade's name.
 
 ```bash
 bun install                         # Install all workspace dependencies
-bun run --filter master dev         # Run master services
-bun run --filter blade-agent dev    # Run blade agent
-bun run --filter web-ui dev         # Run SvelteKit UI
+bun run --filter '@pi-blade/master' dev         # Run master services
+bun run --filter '@pi-blade/blade-agent' dev    # Run blade agent
+bun run --filter '@pi-blade/web-ui' dev         # Run SvelteKit UI
 ```
 
 ## Deploy Flow

@@ -118,7 +118,7 @@ fi
 
 cd "$INSTALL_DIR"
 bun install
-bun run --filter web-ui build
+bun run --filter '@pi-blade/web-ui' build
 
 # Configure nginx
 sudo tee /etc/nginx/conf.d/pi-blade.conf > /dev/null <<EOF
@@ -161,7 +161,7 @@ Requires=docker.service
 Type=simple
 User=$USER
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=$(which bun || echo "$HOME/.bun/bin/bun") run --filter master start
+ExecStart=$(which bun || echo "$HOME/.bun/bin/bun") run --filter '@pi-blade/master' start
 Restart=always
 RestartSec=5
 Environment=PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin
@@ -180,7 +180,7 @@ Requires=docker.service
 Type=simple
 User=$USER
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=$(which bun || echo "$HOME/.bun/bin/bun") run --filter blade-agent start
+ExecStart=$(which bun || echo "$HOME/.bun/bin/bun") run --filter '@pi-blade/blade-agent' start
 Restart=always
 RestartSec=5
 Environment=PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin
