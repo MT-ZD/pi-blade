@@ -169,7 +169,10 @@
 		};
 	}
 
-	async function viewLog(deployId: number, imageTag: string, branch: string) {
+	async function viewLog(deploy: any) {
+		const { id: deployId, image_tag: imageTag, branch, status } = deploy;
+
+		// Try live log first
 		try {
 			const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
 			const activeRes = await fetch('/api/builds/active', {
@@ -183,17 +186,27 @@
 			}
 		} catch {}
 
+		// Fall back to stored log
 		closeLog();
 		logTitle = `${project.name} @ ${branch || '?'} (${imageTag})`;
 		logOpen = true;
-		logDone = true;
+
+		const inProgress = ['building', 'pushing', 'deploying'].includes(status);
+		logDone = !inProgress;
+
 		try {
 			const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
 			const res = await fetch(`/api/deploys/${deployId}/log`, {
 				headers: token ? { 'Authorization': `Bearer ${token}` } : {}
 			});
 			const data = await res.json();
-			logLines = (data.log || 'No log available').split('\n');
+			if (data.log) {
+				logLines = data.log.split('\n');
+			} else if (inProgress) {
+				logLines = ['Build in progress — logs will appear when the build service is updated to the latest version.'];
+			} else {
+				logLines = ['No log recorded for this deploy.'];
+			}
 		} catch {
 			logLines = ['Failed to load log'];
 		}
@@ -589,7 +602,7 @@
 						<td><span class="badge {d.status}">{d.status}</span></td>
 						<td class="text-muted text-sm">{new Date(d.timestamp + 'Z').toLocaleString()}</td>
 						<td class="flex gap-1">
-							<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewLog(d.id, d.image_tag, d.branch)}>Logs</button>
+							<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewLog(d)}>Logs</button>
 							{#if d.status === 'running' && !isCurrent}
 								<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => rollback(d)}>Rollback</button>
 							{/if}
