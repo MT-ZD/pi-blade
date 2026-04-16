@@ -128,13 +128,13 @@
 		</thead>
 		<tbody>
 			{#each repos as repo}
+				{@const s = connStatus[repo.id]}
 				<tr>
 					<td>{repo.url}</td>
 					<td>{repo.branch}</td>
 					<td>{repo.poll_interval}s</td>
 					<td>{repo.is_monorepo ? 'Yes' : 'No'}</td>
 					<td>
-						{@const s = connStatus[repo.id]}
 						{#if !s || s.loading}
 							<span class="text-muted text-sm">testing...</span>
 						{:else if s.ok}
