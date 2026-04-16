@@ -165,7 +165,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
         `).run(imageTag, project.id, blade.id);
 
         const deployReq: DeployRequest = {
-          projectName: project.name,
+          projectName: project.name.toLowerCase(),
           imageTag,
           registryHost: REGISTRY,
           port: blade.port,
@@ -272,7 +272,7 @@ export async function triggerRollback(projectId: number, bladeId: number, imageT
   const res = await fetch(`http://${blade.hostname}:${BLADE_AGENT_PORT}/rollback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectName: project.name, imageTag }),
+    body: JSON.stringify({ projectName: project.name.toLowerCase(), imageTag }),
   });
 
   if (!res.ok) {
