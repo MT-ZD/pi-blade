@@ -8,6 +8,9 @@
 	let showForm = $state(false);
 	let form = $state({ repoId: 0, name: '', path: '.', dockerfilePath: 'Dockerfile', branch: 'main', blades: [] as { bladeId: number; port: number }[] });
 	let repoBranches = $state<Record<number, string[]>>({});
+	let editingId = $state<number | null>(null);
+	let editForm = $state({ name: '', path: '.', dockerfilePath: 'Dockerfile', branch: 'main' });
+	let editRepoId = $state(0);
 
 	let showImport = $state(false);
 	let importRepoId = $state(0);
@@ -117,6 +120,27 @@
 			await importProject(p);
 		}
 	}
+
+	async function startEdit(project: any) {
+		editingId = project.id;
+		editRepoId = project.repo_id;
+		editForm = {
+			name: project.name,
+			path: project.path,
+			dockerfilePath: project.dockerfile_path,
+			branch: project.branch,
+		};
+		if (!repoBranches[editRepoId]) await fetchBranches(editRepoId);
+	}
+
+	async function saveEdit() {
+		if (editingId === null) return;
+		await api.projects.update(editingId, editForm);
+		editingId = null;
+		await refresh();
+	}
+
+	function cancelEdit() { editingId = null; }
 
 	async function deploy(id: number) {
 		await api.projects.deploy(id);
@@ -273,16 +297,40 @@
 		</thead>
 		<tbody>
 			{#each projects as project}
-				<tr>
-					<td>{project.name}</td>
-					<td class="text-sm">{project.repo_url}</td>
-					<td><code>{project.branch}</code></td>
-					<td>{project.path}</td>
-					<td class="flex gap-1">
-						<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deploy(project.id)}>Deploy</button>
-						<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeProject(project.id)}>Delete</button>
-					</td>
-				</tr>
+				{#if editingId === project.id}
+					<tr>
+						<td><input bind:value={editForm.name} style="font-size:0.8rem;width:100%" /></td>
+						<td class="text-sm">{project.repo_url}</td>
+						<td>
+							{#if repoBranches[editRepoId]?.length}
+								<select bind:value={editForm.branch} style="font-size:0.8rem;padding:0.2rem 0.3rem">
+									{#each repoBranches[editRepoId] as b}
+										<option value={b}>{b}</option>
+									{/each}
+								</select>
+							{:else}
+								<input bind:value={editForm.branch} style="font-size:0.8rem;width:80px" />
+							{/if}
+						</td>
+						<td><input bind:value={editForm.path} style="font-size:0.8rem;width:80px" /></td>
+						<td class="flex gap-1">
+							<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={saveEdit}>Save</button>
+							<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={cancelEdit}>Cancel</button>
+						</td>
+					</tr>
+				{:else}
+					<tr>
+						<td>{project.name}</td>
+						<td class="text-sm">{project.repo_url}</td>
+						<td><code>{project.branch}</code></td>
+						<td>{project.path}</td>
+						<td class="flex gap-1">
+							<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => startEdit(project)}>Edit</button>
+							<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deploy(project.id)}>Deploy</button>
+							<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeProject(project.id)}>Delete</button>
+						</td>
+					</tr>
+				{/if}
 			{/each}
 		</tbody>
 	</table>
