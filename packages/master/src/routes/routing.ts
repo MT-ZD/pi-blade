@@ -1,4 +1,5 @@
 import { getDb } from "../db.ts";
+import { regenerateNginxConfig } from "../services/nginx.ts";
 
 export async function handleRoutingRoutes(req: Request, path: string): Promise<Response | null> {
   const db = getDb();
@@ -48,6 +49,7 @@ export async function handleRoutingRoutes(req: Request, path: string): Promise<R
       }
     }
 
+    await regenerateNginxConfig();
     return Response.json({ ok: true, id: routeId });
   }
 
@@ -57,18 +59,21 @@ export async function handleRoutingRoutes(req: Request, path: string): Promise<R
     const result = db.query(
       "INSERT INTO upstreams (route_id, blade_id, port, weight) VALUES (?1, ?2, ?3, ?4)"
     ).run(routeId, body.bladeId, body.port, body.weight || 1);
+    await regenerateNginxConfig();
     return Response.json({ ok: true, id: result.lastInsertRowid });
   }
 
   if (req.method === "DELETE" && path.match(/^\/api\/routes\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
     db.query("DELETE FROM routes WHERE id = ?").run(id);
+    await regenerateNginxConfig();
     return Response.json({ ok: true });
   }
 
   if (req.method === "DELETE" && path.match(/^\/api\/upstreams\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
     db.query("DELETE FROM upstreams WHERE id = ?").run(id);
+    await regenerateNginxConfig();
     return Response.json({ ok: true });
   }
 
