@@ -134,4 +134,22 @@ function migrate(db: Database) {
   try {
     db.exec("ALTER TABLE project_branches ADD COLUMN port INTEGER NOT NULL DEFAULT 8080");
   } catch (_) {}
+
+  // Migrate project_blades: remove port column if it exists (old schema)
+  try {
+    const cols = db.query("PRAGMA table_info(project_blades)").all() as any[];
+    if (cols.some((c: any) => c.name === "port")) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS project_blades_new (
+          project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          blade_id INTEGER NOT NULL REFERENCES blades(id) ON DELETE CASCADE,
+          PRIMARY KEY (project_id, blade_id)
+        );
+        INSERT OR IGNORE INTO project_blades_new (project_id, blade_id)
+          SELECT project_id, blade_id FROM project_blades;
+        DROP TABLE project_blades;
+        ALTER TABLE project_blades_new RENAME TO project_blades;
+      `);
+    }
+  } catch (_) {}
 }
