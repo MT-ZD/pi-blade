@@ -55,7 +55,7 @@
 			{@const m = metrics[blade.id]}
 			<div class="mb-1">
 				<div class="flex justify-between items-center mb-1">
-					<span>{blade.name}</span>
+					<a href="/blades/{blade.id}">{blade.name}</a>
 					<span class="badge {blade.status}">{blade.status}</span>
 				</div>
 				{#if m}
@@ -85,8 +85,8 @@
 				<tbody>
 					{#each deploys as d}
 						<tr>
-							<td>{d.project_name}</td>
-							<td>{d.blade_name}</td>
+							<td><a href="/deploys/{d.id}">{d.project_name}</a></td>
+							<td><a href="/blades/{d.blade_id}">{d.blade_name}</a></td>
 							<td><span class="badge {d.status}">{d.status}</span></td>
 						</tr>
 					{/each}
@@ -109,7 +109,7 @@
 				{#each alerts as a}
 					<tr>
 						<td><span class="badge {a.type === 'blade_down' ? 'offline' : a.type === 'deploy_failed' ? 'failed' : 'degraded'}">{a.type}</span></td>
-						<td>{a.message}</td>
+						<td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={a.message}>{a.message}</td>
 						<td class="text-muted">{new Date(a.timestamp + 'Z').toLocaleString()}</td>
 					</tr>
 				{/each}
