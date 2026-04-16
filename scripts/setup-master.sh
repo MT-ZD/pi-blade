@@ -69,10 +69,10 @@ STEP=$((STEP + 1))
 # Install cloudflared
 if ! command -v cloudflared &> /dev/null; then
   echo "[${STEP}/${STEPS}] Installing cloudflared..."
-  curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
-  echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list > /dev/null
-  sudo apt-get update -qq
-  sudo apt-get install -y -qq cloudflared
+  ARCH=$(dpkg --print-architecture)
+  curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb" -o /tmp/cloudflared.deb
+  sudo dpkg -i /tmp/cloudflared.deb
+  rm -f /tmp/cloudflared.deb
 else
   echo "[${STEP}/${STEPS}] cloudflared already installed"
 fi
