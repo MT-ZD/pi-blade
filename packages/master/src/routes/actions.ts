@@ -78,6 +78,27 @@ export async function handleActionRoutes(req: Request, path: string): Promise<Re
     return Response.json(rows);
   }
 
+  // GET /api/blades/:id/container-health/:container
+  if (req.method === "GET" && path.match(/^\/api\/blades\/\d+\/container-health\/.+$/)) {
+    const parts = path.split("/");
+    const bladeId = parseInt(parts[3]);
+    const container = decodeURIComponent(parts[5]);
+    const blade = db.query("SELECT * FROM blades WHERE id = ?").get(bladeId) as any;
+    if (!blade) return Response.json({ error: "blade not found" }, { status: 404 });
+
+    const url = new URL(req.url);
+    const port = url.searchParams.get("port") || "";
+    try {
+      const res = await fetch(
+        `http://${blade.hostname}:${BLADE_AGENT_PORT}/health/${encodeURIComponent(container)}${port ? '?port=' + port : ''}`,
+        { signal: AbortSignal.timeout(10_000) }
+      );
+      return Response.json(await res.json());
+    } catch (e: any) {
+      return Response.json({ error: e.message, healthy: false }, { status: 502 });
+    }
+  }
+
   // GET /api/blades/:id/container-logs/:container
   if (req.method === "GET" && path.match(/^\/api\/blades\/\d+\/container-logs\/.+$/)) {
     const parts = path.split("/");

@@ -8,6 +8,7 @@
 	let logDone = $state(false);
 	let containerLogLines = $state<string[]>([]);
 	let containerLogLoading = $state(false);
+	let health = $state<any>(null);
 	let logEventSource: EventSource | null = null;
 
 	const deployId = parseInt($page.params.id);
@@ -15,7 +16,16 @@
 	onMount(async () => {
 		deploy = await api.deploys.get(deployId);
 		loadLogs();
+		checkHealth();
 	});
+
+	async function checkHealth() {
+		if (!deploy || deploy.status !== 'running') return;
+		const containerName = `${deploy.project_name.toLowerCase()}-${(deploy.branch || 'main').replace(/\//g, '-')}`;
+		try {
+			health = await api.blades.containerHealth(deploy.blade_id, containerName);
+		} catch {}
+	}
 
 	onDestroy(() => {
 		logEventSource?.close();
@@ -147,6 +157,21 @@
 			<div><span class="text-muted">Blade:</span> <a href="/blades/{deploy.blade_id}">{deploy.blade_name}</a></div>
 			<div><span class="text-muted">Time:</span> {new Date(deploy.timestamp + 'Z').toLocaleString()}</div>
 			<div><span class="text-muted">Repo:</span> {deploy.repo_url}</div>
+			{#if health}
+				<div>
+					<span class="text-muted">Health:</span>
+					{#if health.healthy}
+						<span class="badge online" style="font-size:0.7rem">healthy</span>
+					{:else if health.running}
+						<span class="badge degraded" style="font-size:0.7rem">degraded</span>
+					{:else}
+						<span class="badge offline" style="font-size:0.7rem">down</span>
+					{/if}
+					{#if health.uptime}<span class="text-sm text-muted" style="margin-left:0.3rem">up {health.uptime}</span>{/if}
+					{#if health.restartCount > 0}<span class="text-sm" style="color:var(--warning);margin-left:0.3rem">{health.restartCount} restarts</span>{/if}
+					{#if health.httpStatus !== null}<span class="text-sm text-muted" style="margin-left:0.3rem">HTTP {health.httpStatus}</span>{/if}
+				</div>
+			{/if}
 		</div>
 	</div>
 

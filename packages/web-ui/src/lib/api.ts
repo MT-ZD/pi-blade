@@ -48,7 +48,9 @@ export const api = {
 		list: () => request<any[]>('/blades'),
 		remove: (id: number) => request('/blades/' + id, { method: 'DELETE' }),
 		containerLogs: (bladeId: number, container: string, tail = 200) =>
-			request<{ logs: string }>('/blades/' + bladeId + '/container-logs/' + encodeURIComponent(container) + '?tail=' + tail)
+			request<{ logs: string }>('/blades/' + bladeId + '/container-logs/' + encodeURIComponent(container) + '?tail=' + tail),
+		containerHealth: (bladeId: number, container: string, port?: number) =>
+			request<any>('/blades/' + bladeId + '/container-health/' + encodeURIComponent(container) + (port ? '?port=' + port : ''))
 	},
 	repos: {
 		list: () => request<any[]>('/repos'),

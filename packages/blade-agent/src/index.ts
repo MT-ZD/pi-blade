@@ -1,6 +1,6 @@
 import { BLADE_AGENT_PORT, MASTER_HOSTNAME, MASTER_PORT, getVersion, getVersionShort, clearVersionCache } from "@pi-blade/shared";
 import type { DeployRequest, RollbackRequest, RegisterRequest } from "@pi-blade/shared";
-import { pullImage, startContainer, stopAndRemove, listContainers } from "./docker.ts";
+import { pullImage, startContainer, stopAndRemove, listContainers, checkContainerHealth } from "./docker.ts";
 import { collectMetrics } from "./metrics.ts";
 import { getState, setIdentity, trackDeploy, getPreviousTag, getMasterUrl } from "./state.ts";
 
@@ -137,6 +137,13 @@ const server = Bun.serve({
     if (method === "GET" && url.pathname === "/status") return handleStatus();
     if (method === "GET" && url.pathname === "/version") return handleVersion();
     if (method === "GET" && url.pathname === "/metrics") return handleMetrics();
+
+    if (method === "GET" && url.pathname.startsWith("/health/")) {
+      const container = decodeURIComponent(url.pathname.slice(8));
+      const port = url.searchParams.get("port") ? parseInt(url.searchParams.get("port")!) : undefined;
+      const health = await checkContainerHealth(container, port);
+      return Response.json(health);
+    }
 
     if (method === "GET" && url.pathname.startsWith("/logs/")) {
       const container = decodeURIComponent(url.pathname.slice(6));

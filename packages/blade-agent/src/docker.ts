@@ -35,6 +35,7 @@ export async function startContainer(opts: {
     "-d",
     "--name", opts.name,
     "--restart", "unless-stopped",
+    "--label", "pi-blade=true",
     "-p", `${opts.port}:${cPort}`,
   ];
 
@@ -113,6 +114,66 @@ export async function getContainerMetrics(): Promise<ContainerMetrics[]> {
       networkTxBytes,
     };
   });
+}
+
+export interface ContainerHealth {
+  name: string;
+  running: boolean;
+  restartCount: number;
+  uptime: string;
+  exitCode: number | null;
+  httpStatus: number | null;
+  healthy: boolean;
+}
+
+export async function checkContainerHealth(name: string, port?: number): Promise<ContainerHealth> {
+  const result: ContainerHealth = {
+    name,
+    running: false,
+    restartCount: 0,
+    uptime: '',
+    exitCode: null,
+    httpStatus: null,
+    healthy: false,
+  };
+
+  try {
+    const inspect = await run([
+      "inspect", name,
+      "--format", "{{.State.Running}}\t{{.RestartCount}}\t{{.State.Status}}\t{{.State.ExitCode}}\t{{.State.StartedAt}}",
+    ]);
+    const [running, restarts, status, exitCode, startedAt] = inspect.split("\t");
+    result.running = running === "true";
+    result.restartCount = parseInt(restarts) || 0;
+    result.exitCode = parseInt(exitCode) ?? null;
+
+    if (result.running && startedAt) {
+      const ms = Date.now() - new Date(startedAt).getTime();
+      const mins = Math.floor(ms / 60000);
+      if (mins < 60) result.uptime = `${mins}m`;
+      else if (mins < 1440) result.uptime = `${Math.floor(mins / 60)}h ${mins % 60}m`;
+      else result.uptime = `${Math.floor(mins / 1440)}d ${Math.floor((mins % 1440) / 60)}h`;
+    }
+  } catch {
+    return result;
+  }
+
+  // HTTP health check if port provided and container running
+  if (result.running && port) {
+    try {
+      const res = await fetch(`http://localhost:${port}/`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      result.httpStatus = res.status;
+    } catch {
+      result.httpStatus = 0; // connection refused / timeout
+    }
+  }
+
+  result.healthy = result.running && result.restartCount < 5 &&
+    (result.httpStatus === null || (result.httpStatus >= 200 && result.httpStatus < 500));
+
+  return result;
 }
 
 function parseMem(s: string): number {

@@ -9,6 +9,7 @@
 	let deploys = $state<any[]>([]);
 	let repoBranches = $state<string[]>([]);
 	let latestCommits = $state<Record<string, string>>({});
+	let healthStatus = $state<Record<string, any>>({});
 
 	let showVarForm = $state(false);
 	let varForm = $state({ key: '', value: '', scope: 'global' });
@@ -42,17 +43,22 @@
 		deploys = await api.deploys.byProject(projectId);
 		try {
 			repoBranches = await api.repos.branches(project.repo_id);
-			// Fetch latest commit per branch
-			const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
-			for (const b of project.branches || []) {
-				try {
-					const res = await fetch(`/api/repos/${project.repo_id}/test`, {
-						headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-					});
-					// Use ls-remote to get latest commit per branch — reuse the poller's approach
-				} catch {}
-			}
 		} catch { repoBranches = []; }
+		checkAllHealth();
+	}
+
+	async function checkAllHealth() {
+		if (!project?.blades?.length || !project?.branches?.length) return;
+		for (const b of project.branches) {
+			const ver = currentVersion(b.branch);
+			if (!ver) continue;
+			const containerName = `${project.name.toLowerCase()}-${b.branch.replace(/\//g, '-')}`;
+			const blade = project.blades[0];
+			try {
+				healthStatus[b.branch] = await api.blades.containerHealth(blade.id, containerName, b.port);
+				healthStatus = { ...healthStatus };
+			} catch {}
+		}
 	}
 
 	// Branches
@@ -226,7 +232,7 @@
 	<div class="card mb-2">
 		{#if project.branches?.length > 0}
 			<table>
-				<thead><tr><th>Branch</th><th>Host Port</th><th>Deployed</th><th></th></tr></thead>
+				<thead><tr><th>Branch</th><th>Host Port</th><th>Deployed</th><th>Health</th><th></th></tr></thead>
 				<tbody>
 					{#each project.branches as b}
 						{@const ver = currentVersion(b.branch)}
@@ -239,6 +245,24 @@
 									<span class="badge running" style="margin-left:0.3rem">live</span>
 								{:else}
 									<span class="text-muted text-sm">not deployed</span>
+								{/if}
+							</td>
+							<td>
+								{@const h = healthStatus[b.branch]}
+								{#if h}
+									{#if h.healthy}
+										<span class="badge online" style="font-size:0.65rem">healthy</span>
+									{:else if h.running}
+										<span class="badge degraded" style="font-size:0.65rem" title="Restarts: {h.restartCount}, HTTP: {h.httpStatus}">degraded</span>
+									{:else}
+										<span class="badge offline" style="font-size:0.65rem">down</span>
+									{/if}
+									{#if h.uptime}<span class="text-muted" style="font-size:0.7rem;margin-left:0.3rem">{h.uptime}</span>{/if}
+									{#if h.restartCount > 0}<span class="text-muted" style="font-size:0.7rem;margin-left:0.3rem">({h.restartCount} restarts)</span>{/if}
+								{:else if ver}
+									<span class="text-muted text-sm">checking...</span>
+								{:else}
+									<span class="text-muted text-sm">-</span>
 								{/if}
 							</td>
 							<td class="flex gap-1" style="justify-content:flex-end">
