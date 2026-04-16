@@ -136,6 +136,14 @@ export const api = {
 	nginx: {
 		reload: () => request('/nginx/reload', { method: 'POST' })
 	},
+	config: {
+		export: () => request<any>('/config/export'),
+		import: (config: any, mode: 'preview' | 'apply', conflictStrategy: 'skip' | 'overwrite') =>
+			request<any>('/config/import', {
+				method: 'POST',
+				body: JSON.stringify({ config, mode, conflictStrategy })
+			})
+	},
 	version: () => request<{ version: string; short: string }>('/version'),
 	discord: {
 		get: () => request<{ url: string }>('/settings/discord-webhook'),

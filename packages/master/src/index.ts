@@ -7,6 +7,7 @@ import { handleEnvRoutes } from "./routes/envs.ts";
 import { handleDeployRoutes } from "./routes/deploys.ts";
 import { handleAlertRoutes } from "./routes/alerts.ts";
 import { handleActionRoutes } from "./routes/actions.ts";
+import { handleConfigRoutes } from "./routes/config.ts";
 import { startPoller } from "./services/git-poller.ts";
 import { startMonitor } from "./services/monitor.ts";
 import { startUpdater } from "./services/updater.ts";
@@ -21,6 +22,7 @@ const handlers = [
   handleDeployRoutes,
   handleAlertRoutes,
   handleActionRoutes,
+  handleConfigRoutes,
 ];
 
 const server = Bun.serve({
