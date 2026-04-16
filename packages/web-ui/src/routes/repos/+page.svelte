@@ -7,10 +7,28 @@
 	let form = $state({ url: '', branch: 'main', pollInterval: 60, isMonorepo: false, sshKey: '' });
 	let generatedKey = $state<{ repoId: number; publicKey: string } | null>(null);
 	let generating = $state(false);
+	let connStatus = $state<Record<number, { ok: boolean; error?: string; loading: boolean }>>({});
 
 	onMount(async () => { await refresh(); });
 
-	async function refresh() { repos = await api.repos.list(); }
+	async function refresh() {
+		repos = await api.repos.list();
+		testAll();
+	}
+
+	async function testAll() {
+		for (const repo of repos) {
+			connStatus[repo.id] = { ok: false, loading: true };
+		}
+		await Promise.all(repos.map(async (repo) => {
+			try {
+				const res = await api.repos.test(repo.id);
+				connStatus[repo.id] = { ok: res.ok, error: res.error, loading: false };
+			} catch (e: any) {
+				connStatus[repo.id] = { ok: false, error: e.message, loading: false };
+			}
+		}));
+	}
 
 	async function addRepo() {
 		await api.repos.create({
@@ -106,7 +124,7 @@
 <div class="card">
 	<table>
 		<thead>
-			<tr><th>URL</th><th>Branch</th><th>Poll</th><th>Monorepo</th><th>SSH</th><th></th></tr>
+			<tr><th>URL</th><th>Branch</th><th>Poll</th><th>Monorepo</th><th>Status</th><th>SSH</th><th></th></tr>
 		</thead>
 		<tbody>
 			{#each repos as repo}
@@ -115,6 +133,16 @@
 					<td>{repo.branch}</td>
 					<td>{repo.poll_interval}s</td>
 					<td>{repo.is_monorepo ? 'Yes' : 'No'}</td>
+					<td>
+						{@const s = connStatus[repo.id]}
+						{#if !s || s.loading}
+							<span class="text-muted text-sm">testing...</span>
+						{:else if s.ok}
+							<span class="badge online">connected</span>
+						{:else}
+							<span class="badge offline" title={s.error}>failed</span>
+						{/if}
+					</td>
 					<td>
 						{#if repo.has_ssh_key}
 							<span style="color:var(--success)" title="SSH key configured">&#x1f512;</span>

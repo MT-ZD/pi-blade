@@ -1,5 +1,6 @@
 import { getDb } from "../db.ts";
 import { encrypt } from "../lib/crypto.ts";
+import { sshEnvForRepo, cleanupSshKey } from "../lib/ssh.ts";
 
 export async function handleRepoRoutes(req: Request, path: string): Promise<Response | null> {
   const db = getDb();
@@ -99,6 +100,31 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
     try { unlinkSync(keyPath); } catch {}
 
     return Response.json({ publicKey: publicKey.trim() });
+  }
+
+  if (req.method === "GET" && path.match(/^\/api\/repos\/\d+\/test$/)) {
+    const id = parseInt(path.split("/")[3]);
+    const repo = db.query("SELECT * FROM repos WHERE id = ?").get(id) as any;
+    if (!repo) return Response.json({ error: "not found" }, { status: 404 });
+
+    const sshEnv = sshEnvForRepo(repo);
+    try {
+      const proc = Bun.spawn(["git", "ls-remote", "--exit-code", repo.url, `refs/heads/${repo.branch}`], {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: sshEnv ? { ...process.env, ...sshEnv } : undefined,
+      });
+      const stderr = await new Response(proc.stderr).text();
+      const code = await proc.exited;
+      if (code === 0) {
+        return Response.json({ ok: true });
+      }
+      return Response.json({ ok: false, error: stderr.trim() || `exit code ${code}` });
+    } catch (e: any) {
+      return Response.json({ ok: false, error: e.message });
+    } finally {
+      cleanupSshKey(repo.id);
+    }
   }
 
   if (req.method === "DELETE" && path.match(/^\/api\/repos\/\d+$/)) {
