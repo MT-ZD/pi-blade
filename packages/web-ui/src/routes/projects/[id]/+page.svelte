@@ -33,6 +33,7 @@
 	let containerLogLines = $state<string[]>([]);
 	let containerLogTitle = $state('');
 	let containerLogOpen = $state(false);
+	let revealedVars = $state(new Set<number>());
 
 	const projectId = parseInt($page.params.id);
 
@@ -535,7 +536,15 @@
 				{#each globalVars() as v}
 					<tr>
 						<td><code>{v.key}</code></td>
-						<td><code>{v.value}</code></td>
+						<td style="max-width:200px">
+							{#if revealedVars.has(v.id)}
+								<code style="word-break:break-all">{v.value}</code>
+								<button class="secondary" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.3rem" onclick={() => { revealedVars.delete(v.id); revealedVars = new Set(revealedVars); }}>Hide</button>
+							{:else}
+								<code style="color:var(--text-muted)">••••••</code>
+								<button class="secondary" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.3rem" onclick={() => { revealedVars.add(v.id); revealedVars = new Set(revealedVars); }}>Show</button>
+							{/if}
+						</td>
 						<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeVar(v.id)}>x</button></td>
 					</tr>
 				{/each}
@@ -557,7 +566,15 @@
 						{#each bVars as v}
 							<tr>
 								<td><code>{v.key}</code></td>
-								<td><code>{v.value}</code></td>
+								<td style="max-width:200px">
+									{#if revealedVars.has(v.id)}
+										<code style="word-break:break-all">{v.value}</code>
+										<button class="secondary" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.3rem" onclick={() => { revealedVars.delete(v.id); revealedVars = new Set(revealedVars); }}>Hide</button>
+									{:else}
+										<code style="color:var(--text-muted)">••••••</code>
+										<button class="secondary" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.3rem" onclick={() => { revealedVars.add(v.id); revealedVars = new Set(revealedVars); }}>Show</button>
+									{/if}
+								</td>
 								<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeVar(v.id)}>x</button></td>
 							</tr>
 						{/each}
