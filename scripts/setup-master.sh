@@ -4,6 +4,8 @@ set -e
 MASTER_NAME="piblade-master"
 MASTER_PORT=3000
 REGISTRY_PORT=5000
+STEP=1
+STEPS=8
 
 echo "==============================="
 echo "  Pi-Blade — Master Setup"
@@ -21,13 +23,14 @@ fi
 
 # Install Docker
 if ! command -v docker &> /dev/null; then
-  echo "[1/7] Installing Docker..."
+  echo "[${STEP}/${STEPS}] Installing Docker..."
   curl -fsSL https://get.docker.com | sh
   sudo usermod -aG docker "$USER"
   DOCKER_GROUP_ADDED=1
 else
-  echo "[1/7] Docker already installed"
+  echo "[${STEP}/${STEPS}] Docker already installed"
 fi
+STEP=$((STEP + 1))
 
 # Use sg to run docker commands with group membership if just added
 if [ "${DOCKER_GROUP_ADDED:-0}" = "1" ]; then
@@ -36,29 +39,44 @@ fi
 
 # Install Bun
 if ! command -v bun &> /dev/null; then
-  echo "[2/7] Installing Bun..."
+  echo "[${STEP}/${STEPS}] Installing Bun..."
   curl -fsSL https://bun.sh/install | bash
   export PATH="$HOME/.bun/bin:$PATH"
 else
-  echo "[2/7] Bun already installed"
+  echo "[${STEP}/${STEPS}] Bun already installed"
 fi
+STEP=$((STEP + 1))
 
 # Install nginx
 if ! command -v nginx &> /dev/null; then
-  echo "[3/7] Installing nginx..."
+  echo "[${STEP}/${STEPS}] Installing nginx..."
   sudo apt-get update -qq
   sudo apt-get install -y -qq nginx
 else
-  echo "[3/7] nginx already installed"
+  echo "[${STEP}/${STEPS}] nginx already installed"
 fi
+STEP=$((STEP + 1))
 
 # Install avahi-daemon for mDNS
 if ! command -v avahi-daemon &> /dev/null; then
-  echo "[4/7] Installing avahi-daemon..."
+  echo "[${STEP}/${STEPS}] Installing avahi-daemon..."
   sudo apt-get install -y -qq avahi-daemon avahi-utils
 else
-  echo "[4/7] avahi-daemon already installed"
+  echo "[${STEP}/${STEPS}] avahi-daemon already installed"
 fi
+STEP=$((STEP + 1))
+
+# Install cloudflared
+if ! command -v cloudflared &> /dev/null; then
+  echo "[${STEP}/${STEPS}] Installing cloudflared..."
+  curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
+  echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list > /dev/null
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq cloudflared
+else
+  echo "[${STEP}/${STEPS}] cloudflared already installed"
+fi
+STEP=$((STEP + 1))
 
 # Install git
 if ! command -v git &> /dev/null; then
@@ -67,7 +85,7 @@ if ! command -v git &> /dev/null; then
 fi
 
 # Set hostname
-echo "[5/7] Setting hostname to ${MASTER_NAME}..."
+echo "[${STEP}/${STEPS}] Setting hostname to ${MASTER_NAME}..."
 sudo hostnamectl set-hostname "$MASTER_NAME"
 if ! grep -q "127.0.1.1.*${MASTER_NAME}" /etc/hosts; then
   sudo sed -i "/127\.0\.1\.1/d" /etc/hosts
@@ -75,8 +93,10 @@ if ! grep -q "127.0.1.1.*${MASTER_NAME}" /etc/hosts; then
 fi
 sudo systemctl restart avahi-daemon
 
+STEP=$((STEP + 1))
+
 # Start local Docker registry
-echo "[6/7] Starting local Docker registry..."
+echo "[${STEP}/${STEPS}] Starting local Docker registry..."
 if ! docker ps --format '{{.Names}}' | grep -q '^pi-blade-registry$'; then
   docker run -d \
     --name pi-blade-registry \
@@ -101,8 +121,10 @@ EOF
   sudo systemctl restart docker
 fi
 
+STEP=$((STEP + 1))
+
 # Install Pi-Blade
-echo "[7/7] Installing Pi-Blade..."
+echo "[${STEP}/${STEPS}] Installing Pi-Blade..."
 
 INSTALL_DIR="/opt/pi-blade"
 sudo mkdir -p "$INSTALL_DIR"
