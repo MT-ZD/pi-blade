@@ -219,6 +219,17 @@
 		deploys = await api.deploys.byProject(projectId);
 	}
 
+	function currentVersion(branch: string): string | null {
+		const running = deploys.find((d: any) => d.branch === branch && d.status === 'running');
+		return running?.image_tag || null;
+	}
+
+	async function redeploy(d: any) {
+		if (!confirm(`Redeploy ${d.image_tag} on ${d.branch}?`)) return;
+		await api.projects.deploy(projectId, d.branch);
+		deploys = await api.deploys.byProject(projectId);
+	}
+
 	function globalVars() { return vars.filter((v: any) => v.scope === 'global'); }
 	function branchVars(branch: string) { return vars.filter((v: any) => v.scope === branch); }
 	function availableBlades() {
@@ -316,14 +327,23 @@
 	<div class="card mb-2">
 		{#if project.branches?.length > 0}
 			<table>
-				<thead><tr><th>Branch</th><th>Host Port</th><th></th></tr></thead>
+				<thead><tr><th>Branch</th><th>Host Port</th><th>Current Version</th><th></th></tr></thead>
 				<tbody>
 					{#each project.branches as b}
+						{@const ver = currentVersion(b.branch)}
 						<tr>
 							<td><code>{b.branch}</code></td>
 							<td>
 								<input type="number" value={b.port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem"
 									onchange={(e) => updateBranchPort(b.branch, parseInt((e.target as HTMLInputElement).value))} />
+							</td>
+							<td>
+								{#if ver}
+									<code style="font-size:0.75rem">{ver}</code>
+									<span class="badge running" style="margin-left:0.3rem">live</span>
+								{:else}
+									<span class="text-muted text-sm">not deployed</span>
+								{/if}
 							</td>
 							<td class="flex gap-1" style="justify-content:flex-end">
 								<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deployBranch(b.branch)}>Deploy</button>
@@ -513,16 +533,25 @@
 			<thead><tr><th>Branch</th><th>Blade</th><th>Image</th><th>Status</th><th>Time</th><th></th></tr></thead>
 			<tbody>
 				{#each deploys as d}
-					<tr>
+					{@const isCurrent = d.status === 'running' && d.image_tag === currentVersion(d.branch)}
+					<tr style={isCurrent ? 'background:rgba(74,222,128,0.05)' : ''}>
 						<td><code>{d.branch || '-'}</code></td>
 						<td>{d.blade_name}</td>
-						<td><code>{d.image_tag}</code></td>
+						<td>
+							<code>{d.image_tag}</code>
+							{#if isCurrent}
+								<span class="badge running" style="margin-left:0.3rem">current</span>
+							{/if}
+						</td>
 						<td><span class="badge {d.status}">{d.status}</span></td>
 						<td class="text-muted text-sm">{new Date(d.timestamp).toLocaleString()}</td>
 						<td class="flex gap-1">
 							<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewLog(d.id, d.image_tag, d.branch)}>Logs</button>
-							{#if d.status === 'running'}
+							{#if d.status === 'running' && !isCurrent}
 								<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => rollback(d)}>Rollback</button>
+							{/if}
+							{#if !['building', 'pushing', 'deploying'].includes(d.status)}
+								<button style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => redeploy(d)}>Redeploy</button>
 							{/if}
 						</td>
 					</tr>
