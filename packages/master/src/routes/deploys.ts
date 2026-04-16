@@ -1,4 +1,5 @@
 import { getDb } from "../db.ts";
+import { getLog, subscribe, logKey } from "../lib/build-log.ts";
 
 export async function handleDeployRoutes(req: Request, path: string): Promise<Response | null> {
   const db = getDb();
@@ -26,6 +27,67 @@ export async function handleDeployRoutes(req: Request, path: string): Promise<Re
       LIMIT 50
     `).all(projectId);
     return Response.json(deploys);
+  }
+
+  // GET /api/deploys/:id/log — get stored log
+  if (req.method === "GET" && path.match(/^\/api\/deploys\/\d+\/log$/)) {
+    const id = parseInt(path.split("/")[3]);
+    const deploy = db.query("SELECT log FROM deploys WHERE id = ?").get(id) as any;
+    if (!deploy) return Response.json({ error: "not found" }, { status: 404 });
+    return Response.json({ log: deploy.log || "" });
+  }
+
+  // GET /api/builds/:projectName/:imageTag/logs — SSE live log stream
+  if (req.method === "GET" && path.match(/^\/api\/builds\/.+\/.+\/logs$/)) {
+    const parts = path.split("/");
+    const projectName = decodeURIComponent(parts[3]);
+    const imageTag = decodeURIComponent(parts[4]);
+    const key = logKey(projectName, imageTag);
+
+    const log = getLog(key);
+
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder();
+
+        const send = (data: string) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          } catch {}
+        };
+
+        // Send existing lines
+        if (log) {
+          for (const line of log.lines) {
+            send(line);
+          }
+          if (log.finished) {
+            send("__DONE__");
+            controller.close();
+            return;
+          }
+        }
+
+        // Subscribe to new lines
+        const unsub = subscribe(key, (line) => {
+          if (line.includes("__DONE__")) {
+            send("__DONE__");
+            try { controller.close(); } catch {}
+            unsub();
+          } else {
+            send(line);
+          }
+        });
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
   }
 
   return null;

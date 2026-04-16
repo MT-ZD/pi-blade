@@ -22,6 +22,12 @@
 	let editing = $state(false);
 	let editForm = $state({ name: '', path: '', dockerfilePath: '' });
 
+	let logLines = $state<string[]>([]);
+	let logTitle = $state('');
+	let logOpen = $state(false);
+	let logDone = $state(false);
+	let logEventSource: EventSource | null = null;
+
 	const projectId = parseInt($page.params.id);
 
 	onMount(async () => {
@@ -56,8 +62,70 @@
 
 	async function deployBranch(branch: string) {
 		await api.projects.deploy(projectId, branch);
-		alert(`Build triggered for ${branch}`);
 		deploys = await api.deploys.byProject(projectId);
+		// Find the latest deploy to get imageTag for live log
+		const latest = deploys.find((d: any) => d.branch === branch && (d.status === 'building' || d.status === 'pushing' || d.status === 'deploying'));
+		if (latest) {
+			openLiveLogs(latest.image_tag, branch);
+		}
+	}
+
+	function openLiveLogs(imageTag: string, branch: string) {
+		closeLog();
+		logTitle = `${project.name} @ ${branch} (${imageTag})`;
+		logLines = [];
+		logOpen = true;
+		logDone = false;
+
+		const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
+		// SSE doesn't support auth headers, pass token as query param
+		const url = `/api/builds/${encodeURIComponent(project.name)}/${encodeURIComponent(imageTag)}/logs${token ? '?token=' + encodeURIComponent(token) : ''}`;
+		logEventSource = new EventSource(url);
+		logEventSource.onmessage = (e) => {
+			const data = JSON.parse(e.data);
+			if (data === '__DONE__') {
+				logDone = true;
+				logEventSource?.close();
+				logEventSource = null;
+				deploys = deploys; // trigger reactivity
+				api.deploys.byProject(projectId).then((d) => deploys = d);
+			} else {
+				logLines = [...logLines, data];
+				// Auto-scroll
+				setTimeout(() => {
+					const el = document.getElementById('log-container');
+					if (el) el.scrollTop = el.scrollHeight;
+				}, 10);
+			}
+		};
+		logEventSource.onerror = () => {
+			logDone = true;
+			logEventSource?.close();
+			logEventSource = null;
+		};
+	}
+
+	async function viewStoredLog(deployId: number, imageTag: string, branch: string) {
+		closeLog();
+		logTitle = `${project.name} @ ${branch || '?'} (${imageTag})`;
+		logOpen = true;
+		logDone = true;
+		try {
+			const res = await fetch(`/api/deploys/${deployId}/log`, {
+				headers: { 'Authorization': `Bearer ${document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1] || ''}` }
+			});
+			const data = await res.json();
+			logLines = (data.log || 'No log available').split('\n');
+		} catch {
+			logLines = ['Failed to load log'];
+		}
+	}
+
+	function closeLog() {
+		logEventSource?.close();
+		logEventSource = null;
+		logOpen = false;
+		logLines = [];
 	}
 
 	// Env vars
@@ -379,6 +447,28 @@
 		{/if}
 	{/each}
 
+	<!-- Log Viewer -->
+	{#if logOpen}
+		<div class="card mb-2" style="border:1px solid var(--primary)">
+			<div class="flex justify-between items-center mb-1">
+				<strong class="text-sm">{logTitle}</strong>
+				<div class="flex items-center gap-1">
+					{#if !logDone}
+						<span class="badge building">live</span>
+					{:else}
+						<span class="badge online">done</span>
+					{/if}
+					<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={closeLog}>Close</button>
+				</div>
+			</div>
+			<div id="log-container" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;max-height:400px;overflow-y:auto;font-family:monospace;font-size:0.75rem;line-height:1.5;white-space:pre-wrap;word-break:break-all">
+				{#each logLines as line}
+					{line}
+{/each}
+			</div>
+		</div>
+	{/if}
+
 	<!-- Deploy History -->
 	<h2 class="mb-1">Deploy History</h2>
 	<div class="card">
@@ -392,7 +482,8 @@
 						<td><code>{d.image_tag}</code></td>
 						<td><span class="badge {d.status}">{d.status}</span></td>
 						<td class="text-muted text-sm">{new Date(d.timestamp).toLocaleString()}</td>
-						<td>
+						<td class="flex gap-1">
+							<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewStoredLog(d.id, d.image_tag, d.branch)}>Logs</button>
 							{#if d.status === 'running'}
 								<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => rollback(d)}>Rollback</button>
 							{/if}

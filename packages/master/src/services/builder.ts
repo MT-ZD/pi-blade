@@ -4,8 +4,55 @@ import type { DeployRequest } from "@pi-blade/shared";
 import { sendDiscordAlert } from "../routes/alerts.ts";
 import { postCommitStatus } from "./github.ts";
 import { sshEnvForRepo, cleanupSshKey } from "../lib/ssh.ts";
+import { createLog, appendLog, finishLog, logKey } from "../lib/build-log.ts";
 
 const REGISTRY = `localhost:${REGISTRY_PORT}`;
+
+async function runCmdWithLog(
+  cmd: string[],
+  key: string,
+  opts?: { cwd?: string; env?: Record<string, string> },
+): Promise<string> {
+  const label = cmd[0] === "git" ? cmd.slice(0, 3).join(" ") : cmd.slice(0, 2).join(" ");
+  appendLog(key, `$ ${cmd.join(" ")}`);
+
+  const proc = Bun.spawn(cmd, {
+    stdout: "pipe",
+    stderr: "pipe",
+    cwd: opts?.cwd,
+    env: opts?.env ? { ...process.env, ...opts.env } : undefined,
+  });
+
+  // Stream both stdout and stderr line by line
+  const streamLines = async (stream: ReadableStream<Uint8Array>, prefix: string) => {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() || "";
+      for (const line of lines) {
+        if (line.trim()) appendLog(key, line);
+      }
+    }
+    if (buf.trim()) appendLog(key, buf);
+  };
+
+  await Promise.all([
+    streamLines(proc.stdout as ReadableStream, ""),
+    streamLines(proc.stderr as ReadableStream, ""),
+  ]);
+
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    appendLog(key, `[ERROR] ${label} exited with code ${exitCode}`);
+    throw new Error(`${cmd.join(" ")} failed (exit ${exitCode})`);
+  }
+  return "";
+}
 
 async function runCmd(cmd: string[], opts?: { cwd?: string; env?: Record<string, string> }): Promise<string> {
   const proc = Bun.spawn(cmd, {
@@ -29,6 +76,10 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
   const imageTag = commitSha.slice(0, 12);
   const imageName = `${REGISTRY}/${project.name}:${imageTag}`;
   const cloneDir = `/tmp/pi-blade-build/${project.name}-${imageTag}`;
+  const key = logKey(project.name, imageTag);
+
+  createLog(key);
+  appendLog(key, `=== Build started: ${project.name} @ ${deployBranch} (${imageTag}) ===`);
 
   const blades = db.query(`
     SELECT b.*, pb.port FROM project_blades pb
@@ -37,15 +88,18 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
   `).all(project.id) as any[];
 
   if (blades.length === 0) {
-    console.log(`[builder] No online blades for project "${project.name}", skipping`);
+    appendLog(key, "No online blades, skipping");
+    finishLog(key);
     return;
   }
 
+  const deployIds: number[] = [];
   for (const blade of blades) {
-    db.query(`
+    const result = db.query(`
       INSERT INTO deploys (project_id, image_tag, commit_sha, branch, blade_id, status)
       VALUES (?1, ?2, ?3, ?4, ?5, 'building')
     `).run(project.id, imageTag, commitSha, deployBranch, blade.id);
+    deployIds.push(Number(result.lastInsertRowid));
   }
 
   await postCommitStatus({
@@ -58,17 +112,17 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
 
   const sshEnv = sshEnvForRepo(repo);
   try {
-    console.log(`[builder] Cloning ${repo.url} for "${project.name}"`);
-    await runCmd(["git", "clone", "--depth", "1", "--branch", deployBranch, repo.url, cloneDir], { env: sshEnv });
+    appendLog(key, `Cloning ${repo.url} branch ${deployBranch}...`);
+    await runCmdWithLog(["git", "clone", "--depth", "1", "--branch", deployBranch, repo.url, cloneDir], key, { env: sshEnv });
 
     const buildContext = `${cloneDir}/${project.path}`;
     const dockerfilePath = `${buildContext}/${project.dockerfile_path}`;
 
-    console.log(`[builder] Building ${imageName}`);
-    await runCmd(["docker", "build", "-t", imageName, "-f", dockerfilePath, buildContext]);
+    appendLog(key, `Building image ${imageName}...`);
+    await runCmdWithLog(["docker", "build", "-t", imageName, "-f", dockerfilePath, buildContext], key);
 
-    console.log(`[builder] Pushing ${imageName}`);
-    await runCmd(["docker", "push", imageName]);
+    appendLog(key, `Pushing ${imageName}...`);
+    await runCmdWithLog(["docker", "push", imageName], key);
 
     db.query(`
       UPDATE deploys SET status = 'pushing'
@@ -81,14 +135,14 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
     ).all(project.id, deployBranch) as any[];
     const envVars: Record<string, string> = {};
     for (const v of allVars) {
-      envVars[v.key] = v.value; // branch vars come after global, so they override
+      envVars[v.key] = v.value;
     }
 
     let allBladesSucceeded = true;
 
     for (const blade of blades) {
       try {
-        console.log(`[builder] Deploying to ${blade.name}`);
+        appendLog(key, `Deploying to ${blade.name}...`);
         db.query(`
           UPDATE deploys SET status = 'deploying'
           WHERE image_tag = ? AND project_id = ? AND blade_id = ?
@@ -118,10 +172,10 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
           WHERE image_tag = ? AND project_id = ? AND blade_id = ?
         `).run(imageTag, project.id, blade.id);
 
-        console.log(`[builder] Deployed "${project.name}" to ${blade.name}`);
+        appendLog(key, `✓ Deployed to ${blade.name}`);
       } catch (e: any) {
         allBladesSucceeded = false;
-        console.error(`[builder] Failed to deploy to ${blade.name}: ${e.message}`);
+        appendLog(key, `✗ Failed on ${blade.name}: ${e.message}`);
         db.query(`
           UPDATE deploys SET status = 'failed', log = ?
           WHERE image_tag = ? AND project_id = ? AND blade_id = ?
@@ -135,6 +189,9 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
       }
     }
 
+    const status = allBladesSucceeded ? "success" : "partial failure";
+    appendLog(key, `=== Build ${status} ===`);
+
     await postCommitStatus({
       repoUrl: repo.url,
       commitSha,
@@ -145,7 +202,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
       context: `pi-blade/${project.name}`,
     });
   } catch (e: any) {
-    console.error(`[builder] Build failed for "${project.name}": ${e.message}`);
+    appendLog(key, `=== Build FAILED: ${e.message} ===`);
     db.query(`
       UPDATE deploys SET status = 'failed', log = ?
       WHERE image_tag = ? AND project_id = ?
@@ -165,6 +222,16 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
       context: `pi-blade/${project.name}`,
     });
   } finally {
+    // Save full log to DB
+    const { getLog } = await import("../lib/build-log.ts");
+    const log = getLog(key);
+    if (log) {
+      const fullLog = log.lines.join("\n");
+      db.query(
+        "UPDATE deploys SET log = ? WHERE image_tag = ? AND project_id = ?"
+      ).run(fullLog, imageTag, project.id);
+    }
+    finishLog(key);
     await runCmd(["rm", "-rf", cloneDir]).catch(() => {});
     cleanupSshKey(repo.id);
   }

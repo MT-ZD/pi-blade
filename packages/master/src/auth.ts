@@ -57,7 +57,13 @@ export function checkAuth(req: Request, path: string): Response | null {
   if (isPublicPath(path)) return null;
 
   const auth = req.headers.get("Authorization");
-  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
+  let token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
+
+  // SSE can't send headers — allow token as query param
+  if (!token) {
+    const url = new URL(req.url);
+    token = url.searchParams.get("token");
+  }
 
   if (!token || !validateToken(token)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
