@@ -8,11 +8,18 @@ import { createLog, appendLog, finishLog, logKey } from "../lib/build-log.ts";
 
 const REGISTRY = `localhost:${REGISTRY_PORT}`;
 
+class BuildAbortedError extends Error {
+  constructor() { super("Build aborted"); this.name = "BuildAbortedError"; }
+}
+
 async function runCmdWithLog(
   cmd: string[],
   key: string,
+  signal: AbortSignal,
   opts?: { cwd?: string; env?: Record<string, string> },
 ): Promise<string> {
+  if (signal.aborted) throw new BuildAbortedError();
+
   const label = cmd[0] === "git" ? cmd.slice(0, 3).join(" ") : cmd.slice(0, 2).join(" ");
   appendLog(key, `$ ${cmd.join(" ")}`);
 
@@ -23,8 +30,11 @@ async function runCmdWithLog(
     env: opts?.env ? { ...process.env, ...opts.env } : undefined,
   });
 
-  // Stream both stdout and stderr line by line
-  const streamLines = async (stream: ReadableStream<Uint8Array>, prefix: string) => {
+  // Kill process on abort
+  const onAbort = () => { try { proc.kill(); } catch {} };
+  signal.addEventListener("abort", onAbort, { once: true });
+
+  const streamLines = async (stream: ReadableStream<Uint8Array>) => {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buf = "";
@@ -42,11 +52,16 @@ async function runCmdWithLog(
   };
 
   await Promise.all([
-    streamLines(proc.stdout as ReadableStream, ""),
-    streamLines(proc.stderr as ReadableStream, ""),
+    streamLines(proc.stdout as ReadableStream),
+    streamLines(proc.stderr as ReadableStream),
   ]);
 
+  signal.removeEventListener("abort", onAbort);
+
   const exitCode = await proc.exited;
+
+  if (signal.aborted) throw new BuildAbortedError();
+
   if (exitCode !== 0) {
     appendLog(key, `[ERROR] ${label} exited with code ${exitCode}`);
     throw new Error(`${cmd.join(" ")} failed (exit ${exitCode})`);
@@ -78,7 +93,8 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
   const cloneDir = `/tmp/pi-blade-build/${project.name}-${imageTag}`;
   const key = logKey(project.name, imageTag);
 
-  createLog(key);
+  const ac = createLog(key);
+  const signal = ac.signal;
   appendLog(key, `=== Build started: ${project.name} @ ${deployBranch} (${imageTag}) ===`);
 
   const blades = db.query(`
@@ -113,16 +129,16 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
   const sshEnv = sshEnvForRepo(repo);
   try {
     appendLog(key, `Cloning ${repo.url} branch ${deployBranch}...`);
-    await runCmdWithLog(["git", "clone", "--depth", "1", "--branch", deployBranch, repo.url, cloneDir], key, { env: sshEnv });
+    await runCmdWithLog(["git", "clone", "--depth", "1", "--branch", deployBranch, repo.url, cloneDir], key, signal, { env: sshEnv });
 
     const buildContext = `${cloneDir}/${project.path}`;
     const dockerfilePath = `${buildContext}/${project.dockerfile_path}`;
 
     appendLog(key, `Building image ${imageName}...`);
-    await runCmdWithLog(["docker", "build", "-t", imageName, "-f", dockerfilePath, buildContext], key);
+    await runCmdWithLog(["docker", "build", "-t", imageName, "-f", dockerfilePath, buildContext], key, signal);
 
     appendLog(key, `Pushing ${imageName}...`);
-    await runCmdWithLog(["docker", "push", imageName], key);
+    await runCmdWithLog(["docker", "push", imageName], key, signal);
 
     db.query(`
       UPDATE deploys SET status = 'pushing'
@@ -202,25 +218,33 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
       context: `pi-blade/${project.name}`,
     });
   } catch (e: any) {
-    appendLog(key, `=== Build FAILED: ${e.message} ===`);
-    db.query(`
-      UPDATE deploys SET status = 'failed', log = ?
-      WHERE image_tag = ? AND project_id = ?
-    `).run(e.message, imageTag, project.id);
+    if (e instanceof BuildAbortedError || signal.aborted) {
+      appendLog(key, `=== Build ABORTED ===`);
+      db.query(`
+        UPDATE deploys SET status = 'aborted', log = 'Aborted by user'
+        WHERE image_tag = ? AND project_id = ? AND status IN ('building', 'pushing', 'deploying')
+      `).run(imageTag, project.id);
+    } else {
+      appendLog(key, `=== Build FAILED: ${e.message} ===`);
+      db.query(`
+        UPDATE deploys SET status = 'failed', log = ?
+        WHERE image_tag = ? AND project_id = ?
+      `).run(e.message, imageTag, project.id);
 
-    db.query(`
-      INSERT INTO alerts (type, message) VALUES ('deploy_failed', ?)
-    `).run(`Build failed for "${project.name}": ${e.message}`);
+      db.query(`
+        INSERT INTO alerts (type, message) VALUES ('deploy_failed', ?)
+      `).run(`Build failed for "${project.name}": ${e.message}`);
 
-    await sendDiscordAlert(`Build failed for "${project.name}": ${e.message}`);
+      await sendDiscordAlert(`Build failed for "${project.name}": ${e.message}`);
 
-    await postCommitStatus({
-      repoUrl: repo.url,
-      commitSha,
-      state: "failure",
-      description: `Build failed for "${project.name}"`,
-      context: `pi-blade/${project.name}`,
-    });
+      await postCommitStatus({
+        repoUrl: repo.url,
+        commitSha,
+        state: "failure",
+        description: `Build failed for "${project.name}"`,
+        context: `pi-blade/${project.name}`,
+      });
+    }
   } finally {
     // Save full log to DB
     const { getLog } = await import("../lib/build-log.ts");

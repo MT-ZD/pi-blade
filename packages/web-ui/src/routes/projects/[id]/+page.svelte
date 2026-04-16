@@ -27,6 +27,7 @@
 	let logOpen = $state(false);
 	let logDone = $state(false);
 	let logEventSource: EventSource | null = null;
+	let logImageTag = $state('');
 
 	const projectId = parseInt($page.params.id);
 
@@ -73,6 +74,7 @@
 	function openLiveLogs(imageTag: string, branch: string) {
 		closeLog();
 		logTitle = `${project.name} @ ${branch} (${imageTag})`;
+		logImageTag = imageTag;
 		logLines = [];
 		logOpen = true;
 		logDone = false;
@@ -138,11 +140,21 @@
 		}
 	}
 
+	async function abortBuild() {
+		if (!project || !logImageTag) return;
+		const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
+		await fetch(`/api/builds/${encodeURIComponent(project.name)}/${encodeURIComponent(logImageTag)}/abort`, {
+			method: 'POST',
+			headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+		});
+	}
+
 	function closeLog() {
 		logEventSource?.close();
 		logEventSource = null;
 		logOpen = false;
 		logLines = [];
+		logImageTag = '';
 	}
 
 	// Env vars
@@ -472,6 +484,7 @@
 				<div class="flex items-center gap-1">
 					{#if !logDone}
 						<span class="badge building">live</span>
+						<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={abortBuild}>Abort</button>
 					{:else}
 						<span class="badge online">done</span>
 					{/if}

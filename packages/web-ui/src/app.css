@@ -106,6 +106,7 @@ input:focus, select:focus {
 .badge.failed { background: rgba(248,113,113,0.15); color: var(--danger); }
 .badge.building { background: rgba(96,165,250,0.15); color: var(--info); }
 .badge.pending { background: rgba(139,143,163,0.15); color: var(--text-muted); }
+.badge.aborted { background: rgba(251,191,36,0.15); color: var(--warning); }
 
 .progress-bar {
 	height: 8px;

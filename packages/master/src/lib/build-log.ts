@@ -4,12 +4,22 @@ interface BuildLog {
   lines: string[];
   subscribers: Set<Subscriber>;
   finished: boolean;
+  abortController?: AbortController;
 }
 
 const logs = new Map<string, BuildLog>();
 
-export function createLog(key: string) {
-  logs.set(key, { lines: [], subscribers: new Set(), finished: false });
+export function createLog(key: string): AbortController {
+  const ac = new AbortController();
+  logs.set(key, { lines: [], subscribers: new Set(), finished: false, abortController: ac });
+  return ac;
+}
+
+export function abortBuild(key: string): boolean {
+  const log = logs.get(key);
+  if (!log || log.finished) return false;
+  log.abortController?.abort();
+  return true;
 }
 
 export function appendLog(key: string, line: string) {

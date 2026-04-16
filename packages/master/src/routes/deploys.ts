@@ -1,5 +1,5 @@
 import { getDb } from "../db.ts";
-import { getLog, subscribe, logKey, getActiveLogs } from "../lib/build-log.ts";
+import { getLog, subscribe, logKey, getActiveLogs, abortBuild } from "../lib/build-log.ts";
 
 export async function handleDeployRoutes(req: Request, path: string): Promise<Response | null> {
   const db = getDb();
@@ -27,6 +27,16 @@ export async function handleDeployRoutes(req: Request, path: string): Promise<Re
       LIMIT 50
     `).all(projectId);
     return Response.json(deploys);
+  }
+
+  // POST /api/builds/:projectName/:imageTag/abort — abort a build
+  if (req.method === "POST" && path.match(/^\/api\/builds\/.+\/.+\/abort$/)) {
+    const parts = path.split("/");
+    const projectName = decodeURIComponent(parts[3]);
+    const imageTag = decodeURIComponent(parts[4]);
+    const key = logKey(projectName, imageTag);
+    const ok = abortBuild(key);
+    return Response.json({ ok });
   }
 
   // GET /api/builds/active — list active/recent build logs
