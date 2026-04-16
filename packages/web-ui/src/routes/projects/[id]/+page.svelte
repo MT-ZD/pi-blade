@@ -11,6 +11,9 @@
 
 	let showVarForm = $state(false);
 	let varForm = $state({ key: '', value: '', scope: 'global' });
+	let showPasteForm = $state(false);
+	let pasteContent = $state('');
+	let pasteScope = $state('global');
 	let showBladeForm = $state(false);
 	let bladeForm = $state({ bladeId: 0, port: 8080 });
 	let showBranchAdd = $state(false);
@@ -68,6 +71,29 @@
 	async function removeVar(id: number) {
 		await api.projectVars.remove(id);
 		vars = await api.projectVars.list(projectId);
+	}
+
+	async function importEnvFile() {
+		const lines = pasteContent.split('\n');
+		let count = 0;
+		for (const line of lines) {
+			const trimmed = line.trim();
+			if (!trimmed || trimmed.startsWith('#')) continue;
+			const eqIdx = trimmed.indexOf('=');
+			if (eqIdx < 1) continue;
+			const key = trimmed.slice(0, eqIdx).trim();
+			let value = trimmed.slice(eqIdx + 1).trim();
+			// Strip surrounding quotes
+			if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+				value = value.slice(1, -1);
+			}
+			await api.projectVars.add(projectId, { key, value, scope: pasteScope });
+			count++;
+		}
+		pasteContent = '';
+		showPasteForm = false;
+		vars = await api.projectVars.list(projectId);
+		alert(`Imported ${count} variable(s)`);
 	}
 
 	// Blades
@@ -257,10 +283,36 @@
 	<!-- Environment Variables -->
 	<div class="flex justify-between items-center mb-1">
 		<h2>Environment Variables</h2>
-		<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => showVarForm = !showVarForm}>
-			{showVarForm ? 'Cancel' : '+ Variable'}
-		</button>
+		<div class="flex gap-1">
+			<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => { showPasteForm = !showPasteForm; showVarForm = false; }}>
+				{showPasteForm ? 'Cancel' : 'Paste .env'}
+			</button>
+			<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => { showVarForm = !showVarForm; showPasteForm = false; }}>
+				{showVarForm ? 'Cancel' : '+ Variable'}
+			</button>
+		</div>
 	</div>
+
+	{#if showPasteForm}
+		<div class="card mb-2">
+			<div class="mb-1">
+				<label class="text-sm text-muted">Paste .env file content</label>
+				<textarea bind:value={pasteContent} rows="8" placeholder="KEY=value&#10;DATABASE_URL=postgres://...&#10;# comments are ignored" style="font-family:monospace;font-size:0.8rem"></textarea>
+			</div>
+			<div class="flex gap-1 items-end">
+				<div style="flex:1">
+					<label class="text-sm text-muted">Scope</label>
+					<select bind:value={pasteScope}>
+						<option value="global">Global (all branches)</option>
+						{#each project.branches || [] as branch}
+							<option value={branch}>{branch} only</option>
+						{/each}
+					</select>
+				</div>
+				<button onclick={importEnvFile}>Import</button>
+			</div>
+		</div>
+	{/if}
 
 	{#if showVarForm}
 		<div class="card mb-2">
