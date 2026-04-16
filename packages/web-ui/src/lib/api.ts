@@ -144,6 +144,7 @@ export const api = {
 	nginx: {
 		reload: () => request('/nginx/reload', { method: 'POST' })
 	},
+	cleanup: () => request<{ ok: boolean; log: string[] }>('/cleanup', { method: 'POST' }),
 	config: {
 		export: () => request<any>('/config/export'),
 		import: (config: any, mode: 'preview' | 'apply', conflictStrategy: 'skip' | 'overwrite') =>

@@ -1,5 +1,6 @@
 import { getDb } from "../db.ts";
 import { BLADE_AGENT_PORT } from "@pi-blade/shared";
+import { runCleanup } from "../services/cleanup.ts";
 import { buildAndDeploy, triggerRollback } from "../services/builder.ts";
 import { regenerateNginxConfig } from "../services/nginx.ts";
 import { getLatestMetrics, getBladeVersions } from "../services/monitor.ts";
@@ -117,6 +118,11 @@ export async function handleActionRoutes(req: Request, path: string): Promise<Re
     } catch (e: any) {
       return Response.json({ error: e.message }, { status: 502 });
     }
+  }
+
+  if (req.method === "POST" && path === "/api/cleanup") {
+    const log = await runCleanup();
+    return Response.json({ ok: true, log });
   }
 
   if (req.method === "GET" && path === "/api/metrics") {

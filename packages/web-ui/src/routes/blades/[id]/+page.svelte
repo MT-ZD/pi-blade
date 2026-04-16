@@ -70,6 +70,22 @@
 		}));
 	}
 
+	let cleanupRunning = $state(false);
+	let cleanupLog = $state<string[]>([]);
+
+	async function forceCleanup() {
+		cleanupRunning = true;
+		cleanupLog = [];
+		try {
+			const res = await api.cleanup();
+			cleanupLog = res.log;
+		} catch (e: any) {
+			cleanupLog = [`Failed: ${e.message}`];
+		} finally {
+			cleanupRunning = false;
+		}
+	}
+
 	async function removeBlade() {
 		if (!confirm('Remove this blade?')) return;
 		await api.blades.remove(bladeId);
@@ -85,9 +101,21 @@
 		</div>
 		<div class="flex gap-1">
 			<span class="badge {blade.status}">{blade.status}</span>
+			<button class="secondary" onclick={forceCleanup} disabled={cleanupRunning}>{cleanupRunning ? 'Cleaning...' : 'Force Cleanup'}</button>
 			<button class="danger" onclick={removeBlade}>Remove</button>
 		</div>
 	</div>
+
+	{#if cleanupLog.length > 0}
+		<div class="card mb-2" style="border:1px solid var(--success)">
+			<strong class="text-sm">Cleanup Result</strong>
+			<ul style="margin-top:0.5rem;padding-left:1.25rem">
+				{#each cleanupLog as line}
+					<li class="text-sm">{line}</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
 
 	<div class="card mb-2">
 		<div class="grid grid-3 gap-2 text-sm">

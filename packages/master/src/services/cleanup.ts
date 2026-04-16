@@ -85,16 +85,26 @@ async function cleanupOldDeploys() {
   `).run();
 }
 
+export async function runCleanup(): Promise<string[]> {
+  const log: string[] = [];
+  try {
+    await cleanupOldImages(); log.push("Old images pruned");
+    await cleanupDanglingImages(); log.push("Dangling images removed");
+    await cleanupBuildCache(); log.push("Build cache pruned");
+    await cleanupTempDirs(); log.push("Temp dirs cleaned");
+    await cleanupOldDeploys(); log.push("Old deploy records trimmed");
+  } catch (e: any) {
+    log.push(`Error: ${e.message}`);
+  }
+  return log;
+}
+
 export function startCleanup() {
   console.log("[cleanup] Started");
 
   const cleanup = async () => {
     try {
-      await cleanupOldImages();
-      await cleanupDanglingImages();
-      await cleanupBuildCache();
-      await cleanupTempDirs();
-      await cleanupOldDeploys();
+      await runCleanup();
       console.log("[cleanup] Done");
     } catch (e: any) {
       console.error(`[cleanup] Error: ${e.message}`);
