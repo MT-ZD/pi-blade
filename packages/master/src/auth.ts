@@ -1,11 +1,25 @@
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { getDb } from "./db.ts";
 
-const sessions = new Set<string>();
-
 const PUBLIC_PATHS = ["/api/auth/login", "/api/version", "/setup/blade"];
 const AGENT_PATHS = ["/api/blades/register"];
+const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function getSecret(): string {
+  const db = getDb();
+  let row = db.query("SELECT value FROM settings WHERE key = 'token_secret'").get() as any;
+  if (!row) {
+    const secret = randomBytes(32).toString("hex");
+    db.query("INSERT INTO settings (key, value) VALUES ('token_secret', ?)").run(secret);
+    return secret;
+  }
+  return row.value;
+}
+
+function sign(payload: string): string {
+  return createHmac("sha256", getSecret()).update(payload).digest("hex");
+}
 
 export function setPassword(password: string) {
   const db = getDb();
@@ -38,18 +52,29 @@ export function isPublicPath(path: string): boolean {
   return PUBLIC_PATHS.includes(path) || AGENT_PATHS.includes(path);
 }
 
-export function validateToken(token: string): boolean {
-  return sessions.has(token);
-}
-
 export function createSession(): string {
-  const token = randomBytes(32).toString("hex");
-  sessions.add(token);
-  return token;
+  const expiry = Date.now() + TOKEN_MAX_AGE_MS;
+  const payload = `${expiry}`;
+  return `${payload}.${sign(payload)}`;
 }
 
-export function destroySession(token: string) {
-  sessions.delete(token);
+export function validateToken(token: string): boolean {
+  const dotIdx = token.indexOf(".");
+  if (dotIdx < 1) return false;
+
+  const payload = token.slice(0, dotIdx);
+  const sig = token.slice(dotIdx + 1);
+
+  if (sign(payload) !== sig) return false;
+
+  const expiry = parseInt(payload);
+  if (isNaN(expiry) || Date.now() > expiry) return false;
+
+  return true;
+}
+
+export function destroySession(_token: string) {
+  // Stateless tokens — logout handled client-side by clearing cookie
 }
 
 export function checkAuth(req: Request, path: string): Response | null {
@@ -59,7 +84,6 @@ export function checkAuth(req: Request, path: string): Response | null {
   const auth = req.headers.get("Authorization");
   let token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
 
-  // SSE can't send headers — allow token as query param
   if (!token) {
     const url = new URL(req.url);
     token = url.searchParams.get("token");
