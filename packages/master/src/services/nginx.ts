@@ -47,15 +47,33 @@ export async function regenerateNginxConfig() {
     config += `}\n\n`;
   }
 
-  await Bun.write(NGINX_CONF_PATH, config);
+  const writeProc = Bun.spawn(["sudo", "tee", NGINX_CONF_PATH], {
+    stdin: new Blob([config]),
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  const writeCode = await writeProc.exited;
+  if (writeCode !== 0) {
+    const stderr = await new Response(writeProc.stderr).text();
+    console.error(`[nginx] Failed to write config: ${stderr}`);
+    throw new Error(`Failed to write nginx config: ${stderr}`);
+  }
   console.log("[nginx] Config regenerated");
 
-  const proc = Bun.spawn(["nginx", "-s", "reload"], { stderr: "pipe" });
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    const stderr = await new Response(proc.stderr).text();
-    console.error(`[nginx] Reload failed: ${stderr}`);
-  } else {
-    console.log("[nginx] Reloaded");
+  const testProc = Bun.spawn(["sudo", "nginx", "-t"], { stderr: "pipe" });
+  const testCode = await testProc.exited;
+  if (testCode !== 0) {
+    const stderr = await new Response(testProc.stderr).text();
+    console.error(`[nginx] Config test failed: ${stderr}`);
+    throw new Error(`Nginx config invalid: ${stderr}`);
   }
+
+  const reloadProc = Bun.spawn(["sudo", "nginx", "-s", "reload"], { stderr: "pipe" });
+  const reloadCode = await reloadProc.exited;
+  if (reloadCode !== 0) {
+    const stderr = await new Response(reloadProc.stderr).text();
+    console.error(`[nginx] Reload failed: ${stderr}`);
+    throw new Error(`Nginx reload failed: ${stderr}`);
+  }
+  console.log("[nginx] Reloaded");
 }

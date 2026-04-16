@@ -147,6 +147,19 @@ cd "$INSTALL_DIR"
 bun install
 cd "$INSTALL_DIR/packages/web-ui" && bun run build && cd "$INSTALL_DIR"
 
+# Allow passwordless sudo for nginx and systemctl (needed by pi-blade services)
+SUDOERS_FILE="/etc/sudoers.d/pi-blade"
+if [ ! -f "$SUDOERS_FILE" ]; then
+  sudo tee "$SUDOERS_FILE" > /dev/null <<EOF
+$USER ALL=(ALL) NOPASSWD: /usr/bin/tee /etc/nginx/conf.d/*
+$USER ALL=(ALL) NOPASSWD: /usr/sbin/nginx
+$USER ALL=(ALL) NOPASSWD: /usr/bin/nginx
+$USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pi-blade-*
+$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pi-blade-*
+EOF
+  sudo chmod 0440 "$SUDOERS_FILE"
+fi
+
 # Configure nginx
 sudo tee /etc/nginx/conf.d/pi-blade.conf > /dev/null <<EOF
 # Pi-Blade managed config — will be regenerated automatically
