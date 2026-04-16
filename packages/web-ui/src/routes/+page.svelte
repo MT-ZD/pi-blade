@@ -110,7 +110,7 @@
 					<tr>
 						<td><span class="badge {a.type === 'blade_down' ? 'offline' : a.type === 'deploy_failed' ? 'failed' : 'degraded'}">{a.type}</span></td>
 						<td>{a.message}</td>
-						<td class="text-muted">{new Date(a.timestamp).toLocaleString()}</td>
+						<td class="text-muted">{new Date(a.timestamp + 'Z').toLocaleString()}</td>
 					</tr>
 				{/each}
 			</tbody>

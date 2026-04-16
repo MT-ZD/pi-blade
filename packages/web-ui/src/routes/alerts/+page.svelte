@@ -43,7 +43,7 @@
 					<td>{a.blade_name || '-'}</td>
 					<td>{a.message}</td>
 					<td>{a.discord_sent ? 'Sent' : '-'}</td>
-					<td class="text-muted">{new Date(a.timestamp).toLocaleString()}</td>
+					<td class="text-muted">{new Date(a.timestamp + 'Z').toLocaleString()}</td>
 					<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => dismiss(a.id)}>x</button></td>
 				</tr>
 			{/each}

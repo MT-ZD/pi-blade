@@ -587,7 +587,7 @@
 							{/if}
 						</td>
 						<td><span class="badge {d.status}">{d.status}</span></td>
-						<td class="text-muted text-sm">{new Date(d.timestamp).toLocaleString()}</td>
+						<td class="text-muted text-sm">{new Date(d.timestamp + 'Z').toLocaleString()}</td>
 						<td class="flex gap-1">
 							<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewLog(d.id, d.image_tag, d.branch)}>Logs</button>
 							{#if d.status === 'running' && !isCurrent}

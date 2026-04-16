@@ -27,7 +27,7 @@
 					<td>{d.blade_name}</td>
 					<td><code>{d.image_tag}</code></td>
 					<td><span class="badge {d.status}">{d.status}</span></td>
-					<td class="text-muted">{new Date(d.timestamp).toLocaleString()}</td>
+					<td class="text-muted">{new Date(d.timestamp + 'Z').toLocaleString()}</td>
 					<td>
 						{#if d.status === 'running'}
 							<button class="secondary" style="font-size:0.75rem;padding:0.25rem 0.5rem" onclick={() => rollback(d)}>Rollback</button>
