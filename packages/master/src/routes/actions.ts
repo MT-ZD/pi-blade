@@ -16,10 +16,13 @@ export async function handleActionRoutes(req: Request, path: string): Promise<Re
     if (!project) return Response.json({ error: "not found" }, { status: 404 });
 
     const repo = { id: project.repo_id, url: project.url, ssh_key: project.ssh_key };
-    const body = (await req.json().catch(() => ({}))) as { commitSha?: string };
+    const body = (await req.json().catch(() => ({}))) as { commitSha?: string; branch?: string };
+
+    const branch = body.branch;
+    if (!branch) return Response.json({ error: "branch required" }, { status: 400 });
 
     const commitSha = body.commitSha || "HEAD";
-    buildAndDeploy(project, repo, commitSha);
+    buildAndDeploy(project, repo, commitSha, branch);
     return Response.json({ ok: true, message: "build started" });
   }
 

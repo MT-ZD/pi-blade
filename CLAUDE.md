@@ -46,7 +46,7 @@ pi-blade/
 
 ## Data Model
 
-Core tables: blades, repos (with optional encrypted ssh_key), projects (with branch), project_vars (with scope: global or branch name), deploys, routes, upstreams, alerts, settings
+Core tables: blades, repos (with optional encrypted ssh_key), projects, project_branches, project_vars (scope: global or branch name), project_blades, deploys (with branch), routes, upstreams, alerts, settings
 
 ## Blade Agent API
 

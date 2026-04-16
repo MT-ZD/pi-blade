@@ -19,7 +19,7 @@ export interface Project {
   name: string;
   path: string;
   dockerfilePath: string;
-  branch: string;
+  branches: string[];
 }
 
 export interface Deploy {

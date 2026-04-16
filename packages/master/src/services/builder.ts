@@ -23,8 +23,9 @@ async function runCmd(cmd: string[], opts?: { cwd?: string; env?: Record<string,
   return stdout.trim();
 }
 
-export async function buildAndDeploy(project: any, repo: any, commitSha: string) {
+export async function buildAndDeploy(project: any, repo: any, commitSha: string, branch?: string) {
   const db = getDb();
+  const deployBranch = branch || "main";
   const imageTag = commitSha.slice(0, 12);
   const imageName = `${REGISTRY}/${project.name}:${imageTag}`;
   const cloneDir = `/tmp/pi-blade-build/${project.name}-${imageTag}`;
@@ -42,9 +43,9 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string)
 
   for (const blade of blades) {
     db.query(`
-      INSERT INTO deploys (project_id, image_tag, commit_sha, blade_id, status)
-      VALUES (?1, ?2, ?3, ?4, 'building')
-    `).run(project.id, imageTag, commitSha, blade.id);
+      INSERT INTO deploys (project_id, image_tag, commit_sha, branch, blade_id, status)
+      VALUES (?1, ?2, ?3, ?4, ?5, 'building')
+    `).run(project.id, imageTag, commitSha, deployBranch, blade.id);
   }
 
   await postCommitStatus({
@@ -58,7 +59,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string)
   const sshEnv = sshEnvForRepo(repo);
   try {
     console.log(`[builder] Cloning ${repo.url} for "${project.name}"`);
-    await runCmd(["git", "clone", "--depth", "1", "--branch", project.branch, repo.url, cloneDir], { env: sshEnv });
+    await runCmd(["git", "clone", "--depth", "1", "--branch", deployBranch, repo.url, cloneDir], { env: sshEnv });
 
     const buildContext = `${cloneDir}/${project.path}`;
     const dockerfilePath = `${buildContext}/${project.dockerfile_path}`;
@@ -77,7 +78,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string)
     // Merge global vars + branch-specific vars (branch overrides global)
     const allVars = db.query(
       "SELECT key, value, scope FROM project_vars WHERE project_id = ? AND (scope = 'global' OR scope = ?) ORDER BY scope ASC"
-    ).all(project.id, project.branch) as any[];
+    ).all(project.id, deployBranch) as any[];
     const envVars: Record<string, string> = {};
     for (const v of allVars) {
       envVars[v.key] = v.value; // branch vars come after global, so they override

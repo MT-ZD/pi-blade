@@ -6,11 +6,8 @@
 	let repos = $state<any[]>([]);
 	let blades = $state<any[]>([]);
 	let showForm = $state(false);
-	let form = $state({ repoId: 0, name: '', path: '.', dockerfilePath: 'Dockerfile', branch: 'main', blades: [] as { bladeId: number; port: number }[] });
+	let form = $state({ repoId: 0, name: '', path: '.', dockerfilePath: 'Dockerfile', branches: [] as string[], blades: [] as { bladeId: number; port: number }[] });
 	let repoBranches = $state<Record<number, string[]>>({});
-	let editingId = $state<number | null>(null);
-	let editForm = $state({ name: '', path: '.', dockerfilePath: 'Dockerfile', branch: 'main' });
-	let editRepoId = $state(0);
 
 	let showImport = $state(false);
 	let importRepoId = $state(0);
@@ -19,6 +16,7 @@
 	let detecting = $state(false);
 	let importBlades = $state<{ bladeId: number; port: number }[]>([]);
 	let importRepoBranches = $state<string[]>([]);
+	let importSelectedBranches = $state<string[]>([]);
 
 	onMount(async () => {
 		const [p, r, b] = await Promise.all([api.projects.list(), api.repos.list(), api.blades.list()]);
@@ -36,15 +34,7 @@
 
 	async function fetchBranches(repoId: number) {
 		try {
-			const branches = await api.repos.branches(repoId);
-			repoBranches[repoId] = branches;
-			if (!importRepoBranches.length && repoId === importRepoId) {
-				importRepoBranches = branches;
-				if (branches.length > 0) importBranch = branches[0];
-			}
-			if (branches.length > 0 && form.repoId === repoId) {
-				form.branch = branches.includes(form.branch) ? form.branch : branches[0];
-			}
+			repoBranches[repoId] = await api.repos.branches(repoId);
 		} catch {
 			repoBranches[repoId] = [];
 		}
@@ -53,8 +43,7 @@
 	async function onRepoChange(repoId: number) {
 		form.repoId = repoId;
 		if (!repoBranches[repoId]) await fetchBranches(repoId);
-		const branches = repoBranches[repoId] || [];
-		form.branch = branches[0] || 'main';
+		form.branches = [];
 	}
 
 	async function onImportRepoChange(repoId: number) {
@@ -62,12 +51,21 @@
 		if (!repoBranches[repoId]) await fetchBranches(repoId);
 		importRepoBranches = repoBranches[repoId] || [];
 		importBranch = importRepoBranches[0] || '';
+		importSelectedBranches = importBranch ? [importBranch] : [];
 		detected = [];
+	}
+
+	function toggleFormBranch(b: string) {
+		if (form.branches.includes(b)) {
+			form.branches = form.branches.filter((x) => x !== b);
+		} else {
+			form.branches = [...form.branches, b];
+		}
 	}
 
 	async function addProject() {
 		await api.projects.create(form);
-		form = { repoId: repos[0]?.id || 0, name: '', path: '.', dockerfilePath: 'Dockerfile', branch: 'main', blades: [] };
+		form = { repoId: repos[0]?.id || 0, name: '', path: '.', dockerfilePath: 'Dockerfile', branches: [], blades: [] };
 		showForm = false;
 		await refresh();
 	}
@@ -102,13 +100,21 @@
 		importBlades = importBlades.filter((_, i) => i !== idx);
 	}
 
+	function toggleImportBranch(b: string) {
+		if (importSelectedBranches.includes(b)) {
+			importSelectedBranches = importSelectedBranches.filter((x) => x !== b);
+		} else {
+			importSelectedBranches = [...importSelectedBranches, b];
+		}
+	}
+
 	async function importProject(p: { name: string; path: string; dockerfilePath: string }) {
 		await api.projects.create({
 			repoId: importRepoId,
 			name: p.name,
 			path: p.path,
 			dockerfilePath: p.dockerfilePath,
-			branch: importBranch,
+			branches: importSelectedBranches,
 			blades: importBlades,
 		});
 		detected = detected.filter((d) => d.name !== p.name);
@@ -119,32 +125,6 @@
 		for (const p of [...detected]) {
 			await importProject(p);
 		}
-	}
-
-	async function startEdit(project: any) {
-		editingId = project.id;
-		editRepoId = project.repo_id;
-		editForm = {
-			name: project.name,
-			path: project.path,
-			dockerfilePath: project.dockerfile_path,
-			branch: project.branch,
-		};
-		if (!repoBranches[editRepoId]) await fetchBranches(editRepoId);
-	}
-
-	async function saveEdit() {
-		if (editingId === null) return;
-		await api.projects.update(editingId, editForm);
-		editingId = null;
-		await refresh();
-	}
-
-	function cancelEdit() { editingId = null; }
-
-	async function deploy(id: number) {
-		await api.projects.deploy(id);
-		alert('Build triggered');
 	}
 
 	async function removeProject(id: number) {
@@ -174,7 +154,7 @@
 				</select>
 			</div>
 			<div style="flex:0.5">
-				<label class="text-sm text-muted">Branch</label>
+				<label class="text-sm text-muted">Scan Branch</label>
 				{#if importRepoBranches.length > 0}
 					<select bind:value={importBranch}>
 						{#each importRepoBranches as b}
@@ -186,14 +166,28 @@
 				{/if}
 			</div>
 			<button onclick={detect} disabled={detecting} style="margin-bottom:1px">
-				{detecting ? 'Scanning...' : 'Detect Projects'}
+				{detecting ? 'Scanning...' : 'Detect'}
 			</button>
 		</div>
 
 		{#if detected.length > 0}
+			{#if importRepoBranches.length > 0}
+				<div class="mb-1">
+					<label class="text-sm text-muted">Branches to track</label>
+					<div class="flex gap-1" style="flex-wrap:wrap;margin-top:0.25rem">
+						{#each importRepoBranches as b}
+							<label class="flex items-center gap-1 text-sm" style="cursor:pointer">
+								<input type="checkbox" checked={importSelectedBranches.includes(b)} onchange={() => toggleImportBranch(b)} style="width:auto" />
+								{b}
+							</label>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
 			<div class="mb-1">
 				<div class="flex justify-between items-center mb-1">
-					<span class="text-sm text-muted">Target Blades (applied to all imports)</span>
+					<span class="text-sm text-muted">Target Blades</span>
 					<button class="secondary" style="font-size:0.75rem;padding:0.25rem 0.5rem" onclick={addImportBlade}>+ Blade</button>
 				</div>
 				{#each importBlades as b, i}
@@ -227,7 +221,7 @@
 				</tbody>
 			</table>
 		{:else if !detecting}
-			<div class="text-muted text-sm">Click "Detect Projects" to scan for Dockerfiles</div>
+			<div class="text-muted text-sm">Click "Detect" to scan for Dockerfiles</div>
 		{/if}
 	</div>
 {/if}
@@ -248,18 +242,6 @@
 				</select>
 			</div>
 			<div>
-				<label class="text-sm text-muted">Branch</label>
-				{#if repoBranches[form.repoId]?.length}
-					<select bind:value={form.branch}>
-						{#each repoBranches[form.repoId] as b}
-							<option value={b}>{b}</option>
-						{/each}
-					</select>
-				{:else}
-					<input bind:value={form.branch} placeholder="main" />
-				{/if}
-			</div>
-			<div>
 				<label class="text-sm text-muted">Path in Repo</label>
 				<input bind:value={form.path} placeholder="." />
 			</div>
@@ -268,6 +250,20 @@
 				<input bind:value={form.dockerfilePath} placeholder="Dockerfile" />
 			</div>
 		</div>
+
+		{#if repoBranches[form.repoId]?.length}
+			<div class="mb-1">
+				<label class="text-sm text-muted">Branches</label>
+				<div class="flex gap-1" style="flex-wrap:wrap;margin-top:0.25rem">
+					{#each repoBranches[form.repoId] as b}
+						<label class="flex items-center gap-1 text-sm" style="cursor:pointer">
+							<input type="checkbox" checked={form.branches.includes(b)} onchange={() => toggleFormBranch(b)} style="width:auto" />
+							{b}
+						</label>
+					{/each}
+				</div>
+			</div>
+		{/if}
 
 		<div class="mb-1">
 			<div class="flex justify-between items-center mb-1">
@@ -293,44 +289,26 @@
 <div class="card">
 	<table>
 		<thead>
-			<tr><th>Name</th><th>Repo</th><th>Branch</th><th>Path</th><th></th></tr>
+			<tr><th>Name</th><th>Repo</th><th>Branches</th><th>Path</th><th></th></tr>
 		</thead>
 		<tbody>
 			{#each projects as project}
-				{#if editingId === project.id}
-					<tr>
-						<td><input bind:value={editForm.name} style="font-size:0.8rem;width:100%" /></td>
-						<td class="text-sm">{project.repo_url}</td>
-						<td>
-							{#if repoBranches[editRepoId]?.length}
-								<select bind:value={editForm.branch} style="font-size:0.8rem;padding:0.2rem 0.3rem">
-									{#each repoBranches[editRepoId] as b}
-										<option value={b}>{b}</option>
-									{/each}
-								</select>
-							{:else}
-								<input bind:value={editForm.branch} style="font-size:0.8rem;width:80px" />
-							{/if}
-						</td>
-						<td><input bind:value={editForm.path} style="font-size:0.8rem;width:80px" /></td>
-						<td class="flex gap-1">
-							<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={saveEdit}>Save</button>
-							<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={cancelEdit}>Cancel</button>
-						</td>
-					</tr>
-				{:else}
-					<tr>
-						<td><a href="/projects/{project.id}">{project.name}</a></td>
-						<td class="text-sm">{project.repo_url}</td>
-						<td><code>{project.branch}</code></td>
-						<td>{project.path}</td>
-						<td class="flex gap-1">
-							<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => startEdit(project)}>Edit</button>
-							<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deploy(project.id)}>Deploy</button>
-							<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeProject(project.id)}>Delete</button>
-						</td>
-					</tr>
-				{/if}
+				<tr>
+					<td><a href="/projects/{project.id}">{project.name}</a></td>
+					<td class="text-sm">{project.repo_url}</td>
+					<td>
+						{#each project.branches || [] as b}
+							<code style="margin-right:0.3rem;font-size:0.75rem">{b}</code>
+						{/each}
+						{#if !project.branches?.length}
+							<span class="text-muted text-sm">none</span>
+						{/if}
+					</td>
+					<td>{project.path}</td>
+					<td class="flex gap-1">
+						<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeProject(project.id)}>Delete</button>
+					</td>
+				</tr>
 			{/each}
 		</tbody>
 	</table>

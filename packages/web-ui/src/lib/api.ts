@@ -73,8 +73,16 @@ export const api = {
 		update: (id: number, data: any) =>
 			request('/projects/' + id, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: number) => request('/projects/' + id, { method: 'DELETE' }),
-		deploy: (id: number) =>
-			request('/projects/' + id + '/deploy', { method: 'POST' }),
+		deploy: (id: number, branch: string) =>
+			request('/projects/' + id + '/deploy', {
+				method: 'POST', body: JSON.stringify({ branch })
+			}),
+		addBranch: (id: number, branch: string) =>
+			request('/projects/' + id + '/branches', {
+				method: 'POST', body: JSON.stringify({ branch })
+			}),
+		removeBranch: (id: number, branch: string) =>
+			request('/projects/' + id + '/branches/' + encodeURIComponent(branch), { method: 'DELETE' }),
 		addBlade: (projectId: number, bladeId: number, port: number) =>
 			request('/projects/' + projectId + '/blades', {
 				method: 'POST', body: JSON.stringify({ bladeId, port })

@@ -36,8 +36,14 @@ function migrate(db: Database) {
       repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
       name TEXT UNIQUE NOT NULL,
       path TEXT NOT NULL DEFAULT '.',
-      dockerfile_path TEXT NOT NULL DEFAULT 'Dockerfile',
-      branch TEXT NOT NULL DEFAULT 'main'
+      dockerfile_path TEXT NOT NULL DEFAULT 'Dockerfile'
+    );
+
+    CREATE TABLE IF NOT EXISTS project_branches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      branch TEXT NOT NULL,
+      UNIQUE(project_id, branch)
     );
 
     CREATE TABLE IF NOT EXISTS project_vars (
@@ -60,6 +66,7 @@ function migrate(db: Database) {
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       image_tag TEXT NOT NULL,
       commit_sha TEXT,
+      branch TEXT,
       blade_id INTEGER NOT NULL REFERENCES blades(id) ON DELETE CASCADE,
       status TEXT NOT NULL DEFAULT 'pending',
       timestamp TEXT NOT NULL DEFAULT (datetime('now')),
@@ -112,6 +119,6 @@ function migrate(db: Database) {
   } catch (_) {}
 
   try {
-    db.exec("ALTER TABLE projects ADD COLUMN branch TEXT NOT NULL DEFAULT 'main'");
+    db.exec("ALTER TABLE deploys ADD COLUMN branch TEXT");
   } catch (_) {}
 }

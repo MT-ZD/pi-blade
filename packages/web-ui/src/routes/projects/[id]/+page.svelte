@@ -13,9 +13,11 @@
 	let varForm = $state({ key: '', value: '', scope: 'global' });
 	let showBladeForm = $state(false);
 	let bladeForm = $state({ bladeId: 0, port: 8080 });
+	let showBranchAdd = $state(false);
+	let newBranch = $state('');
 
 	let editing = $state(false);
-	let editForm = $state({ name: '', path: '', dockerfilePath: '', branch: '' });
+	let editForm = $state({ name: '', path: '', dockerfilePath: '' });
 
 	const projectId = parseInt($page.params.id);
 
@@ -34,6 +36,27 @@
 		} catch { repoBranches = []; }
 	}
 
+	// Branches
+	async function addBranch() {
+		if (!newBranch) return;
+		await api.projects.addBranch(projectId, newBranch);
+		newBranch = '';
+		showBranchAdd = false;
+		await refresh();
+	}
+
+	async function removeBranch(branch: string) {
+		if (!confirm(`Remove branch "${branch}"?`)) return;
+		await api.projects.removeBranch(projectId, branch);
+		await refresh();
+	}
+
+	async function deployBranch(branch: string) {
+		await api.projects.deploy(projectId, branch);
+		alert(`Build triggered for ${branch}`);
+		deploys = await api.deploys.byProject(projectId);
+	}
+
 	// Env vars
 	async function addVar() {
 		await api.projectVars.add(projectId, varForm);
@@ -47,7 +70,7 @@
 		vars = await api.projectVars.list(projectId);
 	}
 
-	// Blade deployments
+	// Blades
 	async function addBlade() {
 		await api.projects.addBlade(projectId, bladeForm.bladeId, bladeForm.port);
 		showBladeForm = false;
@@ -59,15 +82,10 @@
 		project = await api.projects.get(projectId);
 	}
 
-	// Edit project
+	// Edit
 	function startEdit() {
 		editing = true;
-		editForm = {
-			name: project.name,
-			path: project.path,
-			dockerfilePath: project.dockerfile_path,
-			branch: project.branch,
-		};
+		editForm = { name: project.name, path: project.path, dockerfilePath: project.dockerfile_path };
 	}
 
 	async function saveEdit() {
@@ -76,13 +94,7 @@
 		await refresh();
 	}
 
-	// Deploy
-	async function triggerDeploy() {
-		await api.projects.deploy(projectId);
-		alert('Build triggered');
-		deploys = await api.deploys.byProject(projectId);
-	}
-
+	// Rollback
 	async function rollback(d: any) {
 		if (!confirm(`Rollback to ${d.image_tag}?`)) return;
 		await api.rollback({ projectId, bladeId: d.blade_id, imageTag: d.image_tag });
@@ -90,10 +102,14 @@
 	}
 
 	function globalVars() { return vars.filter((v: any) => v.scope === 'global'); }
-	function branchVars() { return vars.filter((v: any) => v.scope !== 'global'); }
+	function branchVars(branch: string) { return vars.filter((v: any) => v.scope === branch); }
 	function availableBlades() {
 		const assigned = new Set(project?.blades?.map((b: any) => b.id) || []);
 		return allBlades.filter((b) => !assigned.has(b.id));
+	}
+	function unaddedBranches() {
+		const added = new Set(project?.branches || []);
+		return repoBranches.filter((b) => !added.has(b));
 	}
 </script>
 
@@ -107,28 +123,15 @@
 			{#if !editing}
 				<button class="secondary" onclick={startEdit}>Edit</button>
 			{/if}
-			<button onclick={triggerDeploy}>Deploy</button>
 		</div>
 	</div>
 
 	{#if editing}
 		<div class="card mb-2">
-			<div class="grid grid-2 gap-2 mb-1">
+			<div class="grid grid-3 gap-2 mb-1">
 				<div>
 					<label class="text-sm text-muted">Name</label>
 					<input bind:value={editForm.name} />
-				</div>
-				<div>
-					<label class="text-sm text-muted">Branch</label>
-					{#if repoBranches.length > 0}
-						<select bind:value={editForm.branch}>
-							{#each repoBranches as b}
-								<option value={b}>{b}</option>
-							{/each}
-						</select>
-					{:else}
-						<input bind:value={editForm.branch} />
-					{/if}
 				</div>
 				<div>
 					<label class="text-sm text-muted">Path</label>
@@ -146,18 +149,66 @@
 		</div>
 	{:else}
 		<div class="card mb-2">
-			<div class="grid grid-4 text-sm">
+			<div class="grid grid-3 text-sm">
 				<div><span class="text-muted">Repo:</span> {project.repo_url}</div>
-				<div><span class="text-muted">Branch:</span> <code>{project.branch}</code></div>
 				<div><span class="text-muted">Path:</span> {project.path}</div>
 				<div><span class="text-muted">Dockerfile:</span> {project.dockerfile_path}</div>
 			</div>
 		</div>
 	{/if}
 
-	<!-- Deployments (blade targets) -->
+	<!-- Branches -->
 	<div class="flex justify-between items-center mb-1">
-		<h2>Deployments</h2>
+		<h2>Branches</h2>
+		<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => showBranchAdd = !showBranchAdd}>
+			{showBranchAdd ? 'Cancel' : '+ Branch'}
+		</button>
+	</div>
+
+	{#if showBranchAdd}
+		<div class="card mb-2">
+			<div class="flex gap-1 items-end">
+				<div style="flex:1">
+					{#if unaddedBranches().length > 0}
+						<select bind:value={newBranch}>
+							<option value="">Select branch...</option>
+							{#each unaddedBranches() as b}
+								<option value={b}>{b}</option>
+							{/each}
+						</select>
+					{:else}
+						<input bind:value={newBranch} placeholder="branch name" />
+					{/if}
+				</div>
+				<button onclick={addBranch} style="margin-bottom:1px">Add</button>
+			</div>
+		</div>
+	{/if}
+
+	<div class="card mb-2">
+		{#if project.branches?.length > 0}
+			<table>
+				<thead><tr><th>Branch</th><th></th></tr></thead>
+				<tbody>
+					{#each project.branches as branch}
+						<tr>
+							<td><code>{branch}</code></td>
+							<td class="flex gap-1" style="justify-content:flex-end">
+								<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deployBranch(branch)}>Deploy</button>
+								<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeBranch(branch)}>Remove</button>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		{:else}
+			<div class="text-muted" style="padding:0.75rem">No branches configured — add a branch to start deploying</div>
+		{/if}
+	</div>
+
+	<!-- Blades -->
+	<div class="flex justify-between items-center mb-1">
+		<h2>Target Blades</h2>
 		<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => showBladeForm = !showBladeForm}>
 			{showBladeForm ? 'Cancel' : '+ Blade'}
 		</button>
@@ -199,7 +250,7 @@
 				</tbody>
 			</table>
 		{:else}
-			<div class="text-muted" style="padding:0.75rem">No blades assigned — add a blade to deploy to</div>
+			<div class="text-muted" style="padding:0.75rem">No blades assigned</div>
 		{/if}
 	</div>
 
@@ -227,7 +278,9 @@
 				<label class="text-sm text-muted">Scope</label>
 				<select bind:value={varForm.scope}>
 					<option value="global">Global (all branches)</option>
-					<option value={project.branch}>{project.branch} (branch-specific)</option>
+					{#each project.branches || [] as branch}
+						<option value={branch}>{branch} only</option>
+					{/each}
 				</select>
 			</div>
 			<button onclick={addVar}>Add</button>
@@ -253,34 +306,36 @@
 		{/if}
 	</div>
 
-	<div class="card mb-2">
-		<h3 class="mb-1" style="font-size:0.9rem">Branch: <code>{project.branch}</code></h3>
-		<p class="text-sm text-muted mb-1">Override global variables for this branch</p>
-		<table>
-			<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
-			<tbody>
-				{#each branchVars() as v}
-					<tr>
-						<td><code>{v.key}</code></td>
-						<td><code>{v.value}</code></td>
-						<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeVar(v.id)}>x</button></td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-		{#if branchVars().length === 0}
-			<div class="text-muted text-sm" style="padding:0.75rem">No branch-specific variables</div>
+	{#each project.branches || [] as branch}
+		{@const bVars = branchVars(branch)}
+		{#if bVars.length > 0}
+			<div class="card mb-2">
+				<h3 class="mb-1" style="font-size:0.9rem"><code>{branch}</code> overrides</h3>
+				<table>
+					<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
+					<tbody>
+						{#each bVars as v}
+							<tr>
+								<td><code>{v.key}</code></td>
+								<td><code>{v.value}</code></td>
+								<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeVar(v.id)}>x</button></td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
 		{/if}
-	</div>
+	{/each}
 
 	<!-- Deploy History -->
 	<h2 class="mb-1">Deploy History</h2>
 	<div class="card">
 		<table>
-			<thead><tr><th>Blade</th><th>Image</th><th>Status</th><th>Time</th><th></th></tr></thead>
+			<thead><tr><th>Branch</th><th>Blade</th><th>Image</th><th>Status</th><th>Time</th><th></th></tr></thead>
 			<tbody>
 				{#each deploys as d}
 					<tr>
+						<td><code>{d.branch || '-'}</code></td>
 						<td>{d.blade_name}</td>
 						<td><code>{d.image_tag}</code></td>
 						<td><span class="badge {d.status}">{d.status}</span></td>
