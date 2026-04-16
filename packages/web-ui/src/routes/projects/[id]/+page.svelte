@@ -15,6 +15,7 @@
 	let pasteContent = $state('');
 	let pasteScope = $state('global');
 	let showBladeForm = $state(false);
+	let selectedBladeId = $state(0);
 	let showBranchAdd = $state(false);
 	let newBranch = $state('');
 	let newBranchPort = $state(8080);
@@ -427,7 +428,7 @@
 	<!-- Blades -->
 	<div class="flex justify-between items-center mb-1">
 		<h2>Target Blades</h2>
-		<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => showBladeForm = !showBladeForm}>
+		<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => { showBladeForm = !showBladeForm; const avail = availableBlades(); if (avail.length) selectedBladeId = avail[0].id; }}>
 			{showBladeForm ? 'Cancel' : '+ Blade'}
 		</button>
 	</div>
@@ -437,16 +438,13 @@
 			<div class="flex gap-1 items-end">
 				<div style="flex:1">
 					<label class="text-sm text-muted">Blade</label>
-					<select id="blade-select">
+					<select bind:value={selectedBladeId}>
 						{#each availableBlades() as blade}
 							<option value={blade.id}>{blade.name}</option>
 						{/each}
 					</select>
 				</div>
-				<button onclick={() => {
-					const sel = document.getElementById('blade-select') as HTMLSelectElement;
-					if (sel?.value) addBlade(parseInt(sel.value));
-				}} style="margin-bottom:1px">Add</button>
+				<button onclick={() => { if (selectedBladeId) addBlade(selectedBladeId); }} style="margin-bottom:1px">Add</button>
 			</div>
 		</div>
 	{/if}
