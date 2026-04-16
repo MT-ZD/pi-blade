@@ -1,10 +1,31 @@
 const BASE = '/api';
 
+function getToken(): string | null {
+	if (typeof document === 'undefined') return null;
+	const match = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/);
+	return match ? decodeURIComponent(match[1]) : null;
+}
+
+export function setToken(token: string | null) {
+	if (typeof document === 'undefined') return;
+	if (token) {
+		document.cookie = `pi_blade_token=${encodeURIComponent(token)}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Strict`;
+	} else {
+		document.cookie = 'pi_blade_token=; path=/; max-age=0';
+	}
+}
+
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
-	const res = await fetch(`${BASE}${path}`, {
-		headers: { 'Content-Type': 'application/json' },
-		...opts
-	});
+	const token = getToken();
+	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+	if (token) headers['Authorization'] = `Bearer ${token}`;
+
+	const res = await fetch(`${BASE}${path}`, { headers, ...opts });
+	if (res.status === 401) {
+		setToken(null);
+		window.dispatchEvent(new CustomEvent('pi-blade-unauthorized'));
+		throw new Error('unauthorized');
+	}
 	if (!res.ok) {
 		const err = await res.json().catch(() => ({ error: res.statusText }));
 		throw new Error(err.error || res.statusText);
@@ -13,6 +34,16 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
 }
 
 export const api = {
+	auth: {
+		status: () => request<{ enabled: boolean }>('/auth/status'),
+		login: (password: string) => request<{ ok: boolean; token: string }>('/auth/login', {
+			method: 'POST', body: JSON.stringify({ password })
+		}),
+		logout: () => request('/auth/logout', { method: 'POST' }),
+		setPassword: (password: string) => request('/auth/password', {
+			method: 'PUT', body: JSON.stringify({ password })
+		})
+	},
 	blades: {
 		list: () => request<any[]>('/blades'),
 		remove: (id: number) => request('/blades/' + id, { method: 'DELETE' })

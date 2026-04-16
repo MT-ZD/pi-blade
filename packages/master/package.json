@@ -7,6 +7,10 @@
     "start": "bun run src/index.ts"
   },
   "dependencies": {
-    "@pi-blade/shared": "workspace:*"
+    "@pi-blade/shared": "workspace:*",
+    "bcryptjs": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0"
   }
 }

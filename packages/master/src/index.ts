@@ -10,6 +10,7 @@ import { handleActionRoutes } from "./routes/actions.ts";
 import { startPoller } from "./services/git-poller.ts";
 import { startMonitor } from "./services/monitor.ts";
 import { startUpdater } from "./services/updater.ts";
+import { checkAuth, verifyPassword, createSession, destroySession, isAuthEnabled, setPassword } from "./auth.ts";
 
 const handlers = [
   handleBladeRoutes,
@@ -38,6 +39,38 @@ const server = Bun.serve({
     if (path === "/api/version") {
       return Response.json({ version: getVersion(), short: getVersionShort() });
     }
+
+    if (req.method === "GET" && path === "/api/auth/status") {
+      return Response.json({ enabled: isAuthEnabled() });
+    }
+
+    if (req.method === "POST" && path === "/api/auth/login") {
+      const body = await req.json() as { password: string };
+      if (!verifyPassword(body.password)) {
+        return Response.json({ error: "invalid password" }, { status: 401 });
+      }
+      const token = createSession();
+      return Response.json({ ok: true, token });
+    }
+
+    if (req.method === "POST" && path === "/api/auth/logout") {
+      const auth = req.headers.get("Authorization");
+      const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
+      if (token) destroySession(token);
+      return Response.json({ ok: true });
+    }
+
+    if (req.method === "PUT" && path === "/api/auth/password") {
+      const authCheck = checkAuth(req, path);
+      if (authCheck) return authCheck;
+      const body = await req.json() as { password: string };
+      setPassword(body.password);
+      return Response.json({ ok: true });
+    }
+
+    // Auth check for all other API routes
+    const authResponse = checkAuth(req, path);
+    if (authResponse) return authResponse;
 
     for (const handler of handlers) {
       const response = await handler(req, path);
