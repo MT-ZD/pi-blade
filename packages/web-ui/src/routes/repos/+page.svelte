@@ -10,6 +10,8 @@
 	let connStatus = $state<Record<number, { ok: boolean; error?: string; loading: boolean }>>({});
 	let repoBranches = $state<Record<number, string[]>>({});
 	let branchLoading = $state<Record<number, boolean>>({});
+	let editingId = $state<number | null>(null);
+	let editForm = $state({ url: '', branch: '', pollInterval: 60, isMonorepo: false });
 
 	onMount(async () => { await refresh(); });
 
@@ -44,11 +46,6 @@
 		}
 	}
 
-	async function changeBranch(id: number, branch: string) {
-		await api.repos.update(id, { branch });
-		await refresh();
-	}
-
 	async function addRepo() {
 		await api.repos.create({
 			...form,
@@ -57,6 +54,27 @@
 		form = { url: '', branch: 'main', pollInterval: 60, isMonorepo: false, sshKey: '' };
 		showForm = false;
 		await refresh();
+	}
+
+	function startEdit(repo: any) {
+		editingId = repo.id;
+		editForm = {
+			url: repo.url,
+			branch: repo.branch,
+			pollInterval: repo.poll_interval,
+			isMonorepo: !!repo.is_monorepo,
+		};
+	}
+
+	async function saveEdit() {
+		if (editingId === null) return;
+		await api.repos.update(editingId, editForm);
+		editingId = null;
+		await refresh();
+	}
+
+	function cancelEdit() {
+		editingId = null;
 	}
 
 	async function removeRepo(id: number) {
@@ -149,44 +167,82 @@
 			{#each repos as repo}
 				{@const s = connStatus[repo.id]}
 				{@const branches = repoBranches[repo.id]}
-				<tr>
-					<td>{repo.url}</td>
-					<td>
-						{#if branches && branches.length > 0}
-							<select value={repo.branch} onchange={(e) => changeBranch(repo.id, (e.target as HTMLSelectElement).value)}
-								style="font-size:0.8rem;padding:0.2rem 0.3rem">
-								{#each branches as b}
-									<option value={b} selected={b === repo.branch}>{b}</option>
-								{/each}
-							</select>
-						{:else}
-							{repo.branch}
-						{/if}
-					</td>
-					<td>{repo.poll_interval}s</td>
-					<td>{repo.is_monorepo ? 'Yes' : 'No'}</td>
-					<td>
-						{#if !s || s.loading}
-							<span class="text-muted text-sm">testing...</span>
-						{:else if s.ok}
-							<span class="badge online">connected</span>
-						{:else}
-							<span class="badge offline" title={s.error}>failed</span>
-						{/if}
-					</td>
-					<td>
-						{#if repo.has_ssh_key}
-							<span style="color:var(--success)" title="SSH key configured">&#x1f512;</span>
-							<button onclick={() => showPublicKey(repo.id)} style="font-size:0.65rem;padding:0.15rem 0.4rem">View</button>
-							<button onclick={() => removeKey(repo.id)} style="font-size:0.65rem;padding:0.15rem 0.4rem" class="danger">Remove</button>
-						{:else}
-							<button onclick={() => generateKey(repo.id)} disabled={generating} style="font-size:0.65rem;padding:0.15rem 0.4rem">
-								{generating ? '...' : 'Generate'}
-							</button>
-						{/if}
-					</td>
-					<td><button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeRepo(repo.id)}>Delete</button></td>
-				</tr>
+				{#if editingId === repo.id}
+					<tr>
+						<td><input bind:value={editForm.url} style="font-size:0.8rem;width:100%" /></td>
+						<td>
+							{#if branches && branches.length > 0}
+								<select bind:value={editForm.branch} style="font-size:0.8rem;padding:0.2rem 0.3rem">
+									{#each branches as b}
+										<option value={b}>{b}</option>
+									{/each}
+								</select>
+							{:else}
+								<input bind:value={editForm.branch} style="font-size:0.8rem;width:80px" />
+							{/if}
+						</td>
+						<td><input type="number" bind:value={editForm.pollInterval} style="font-size:0.8rem;width:60px" /></td>
+						<td>
+							<input type="checkbox" bind:checked={editForm.isMonorepo} style="width:auto" />
+						</td>
+						<td>
+							{#if !s || s.loading}
+								<span class="text-muted text-sm">testing...</span>
+							{:else if s.ok}
+								<span class="badge online">connected</span>
+							{:else}
+								<span class="badge offline" title={s.error}>failed</span>
+							{/if}
+						</td>
+						<td></td>
+						<td class="flex gap-1">
+							<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={saveEdit}>Save</button>
+							<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={cancelEdit}>Cancel</button>
+						</td>
+					</tr>
+				{:else}
+					<tr>
+						<td>{repo.url}</td>
+						<td>
+							{#if branches && branches.length > 0}
+								<select value={repo.branch} onchange={(e) => { api.repos.update(repo.id, { branch: (e.target as HTMLSelectElement).value }); refresh(); }}
+									style="font-size:0.8rem;padding:0.2rem 0.3rem">
+									{#each branches as b}
+										<option value={b} selected={b === repo.branch}>{b}</option>
+									{/each}
+								</select>
+							{:else}
+								{repo.branch}
+							{/if}
+						</td>
+						<td>{repo.poll_interval}s</td>
+						<td>{repo.is_monorepo ? 'Yes' : 'No'}</td>
+						<td>
+							{#if !s || s.loading}
+								<span class="text-muted text-sm">testing...</span>
+							{:else if s.ok}
+								<span class="badge online">connected</span>
+							{:else}
+								<span class="badge offline" title={s.error}>failed</span>
+							{/if}
+						</td>
+						<td>
+							{#if repo.has_ssh_key}
+								<span style="color:var(--success)" title="SSH key configured">&#x1f512;</span>
+								<button onclick={() => showPublicKey(repo.id)} style="font-size:0.65rem;padding:0.15rem 0.4rem">View</button>
+								<button onclick={() => removeKey(repo.id)} style="font-size:0.65rem;padding:0.15rem 0.4rem" class="danger">Remove</button>
+							{:else}
+								<button onclick={() => generateKey(repo.id)} disabled={generating} style="font-size:0.65rem;padding:0.15rem 0.4rem">
+									{generating ? '...' : 'Generate'}
+								</button>
+							{/if}
+						</td>
+						<td class="flex gap-1">
+							<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => startEdit(repo)}>Edit</button>
+							<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeRepo(repo.id)}>Delete</button>
+						</td>
+					</tr>
+				{/if}
 			{/each}
 		</tbody>
 	</table>
