@@ -14,6 +14,17 @@ export async function handleAlertRoutes(req: Request, path: string): Promise<Res
     return Response.json(alerts);
   }
 
+  if (req.method === "DELETE" && path === "/api/alerts") {
+    db.query("DELETE FROM alerts").run();
+    return Response.json({ ok: true });
+  }
+
+  if (req.method === "DELETE" && path.match(/^\/api\/alerts\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    db.query("DELETE FROM alerts WHERE id = ?").run(id);
+    return Response.json({ ok: true });
+  }
+
   if (req.method === "GET" && path === "/api/settings/github-token") {
     const row = db.query("SELECT value FROM settings WHERE key = 'github_token'").get() as any;
     return Response.json({ configured: !!row?.value });

@@ -81,7 +81,9 @@ export const api = {
 		byProject: (id: number) => request<any[]>('/deploys/project/' + id)
 	},
 	alerts: {
-		list: () => request<any[]>('/alerts')
+		list: () => request<any[]>('/alerts'),
+		remove: (id: number) => request('/alerts/' + id, { method: 'DELETE' }),
+		clearAll: () => request('/alerts', { method: 'DELETE' })
 	},
 	metrics: {
 		all: () => request<Record<string, any>>('/metrics')
