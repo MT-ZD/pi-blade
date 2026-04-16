@@ -102,6 +102,48 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
     return Response.json({ publicKey: publicKey.trim() });
   }
 
+  if (req.method === "GET" && path.match(/^\/api\/repos\/\d+\/detect-projects$/)) {
+    const id = parseInt(path.split("/")[3]);
+    const repo = db.query("SELECT * FROM repos WHERE id = ?").get(id) as any;
+    if (!repo) return Response.json({ error: "not found" }, { status: 404 });
+
+    const cloneDir = `/tmp/pi-blade-detect-${id}-${Date.now()}`;
+    const sshEnv = sshEnvForRepo(repo);
+    try {
+      const cloneProc = Bun.spawn(
+        ["git", "clone", "--depth", "1", "--branch", repo.branch, repo.url, cloneDir],
+        { stdout: "pipe", stderr: "pipe", env: sshEnv ? { ...process.env, ...sshEnv } : undefined },
+      );
+      const cloneCode = await cloneProc.exited;
+      if (cloneCode !== 0) {
+        const err = await new Response(cloneProc.stderr).text();
+        return Response.json({ error: `clone failed: ${err.trim()}` }, { status: 500 });
+      }
+
+      // Find all Dockerfiles
+      const findProc = Bun.spawn(
+        ["find", cloneDir, "-name", "Dockerfile", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/.git/*"],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      const findOut = await new Response(findProc.stdout).text();
+      await findProc.exited;
+
+      const dockerfiles = findOut.trim().split("\n").filter(Boolean);
+      const projects = dockerfiles.map((df) => {
+        const rel = df.replace(cloneDir + "/", "");
+        const dir = rel.includes("/") ? rel.substring(0, rel.lastIndexOf("/")) : ".";
+        const parts = dir.split("/");
+        const name = dir === "." ? repo.url.split("/").pop()?.replace(".git", "") || "app" : parts[parts.length - 1];
+        return { name, path: dir, dockerfilePath: rel.substring(dir === "." ? 0 : dir.length + 1) };
+      });
+
+      return Response.json(projects);
+    } finally {
+      Bun.spawn(["rm", "-rf", cloneDir], { stdout: "ignore", stderr: "ignore" });
+      cleanupSshKey(repo.id);
+    }
+  }
+
   if (req.method === "GET" && path.match(/^\/api\/repos\/\d+\/test$/)) {
     const id = parseInt(path.split("/")[3]);
     const repo = db.query("SELECT * FROM repos WHERE id = ?").get(id) as any;

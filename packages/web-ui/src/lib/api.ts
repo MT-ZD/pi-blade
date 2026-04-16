@@ -28,7 +28,9 @@ export const api = {
 		getPublicKey: (id: number) =>
 			request<{ publicKey: string }>('/repos/' + id + '/public-key'),
 		test: (id: number) =>
-			request<{ ok: boolean; error?: string }>('/repos/' + id + '/test')
+			request<{ ok: boolean; error?: string }>('/repos/' + id + '/test'),
+		detectProjects: (id: number) =>
+			request<{ name: string; path: string; dockerfilePath: string }[]>('/repos/' + id + '/detect-projects')
 	},
 	projects: {
 		list: () => request<any[]>('/projects'),
