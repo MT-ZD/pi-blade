@@ -8,6 +8,8 @@
 	let generatedKey = $state<{ repoId: number; publicKey: string } | null>(null);
 	let generating = $state(false);
 	let connStatus = $state<Record<number, { ok: boolean; error?: string; loading: boolean }>>({});
+	let repoBranches = $state<Record<number, string[]>>({});
+	let branchLoading = $state<Record<number, boolean>>({});
 
 	onMount(async () => { await refresh(); });
 
@@ -24,10 +26,27 @@
 			try {
 				const res = await api.repos.test(repo.id);
 				connStatus[repo.id] = { ok: res.ok, error: res.error, loading: false };
+				if (res.ok) fetchBranches(repo.id);
 			} catch (e: any) {
 				connStatus[repo.id] = { ok: false, error: e.message, loading: false };
 			}
 		}));
+	}
+
+	async function fetchBranches(id: number) {
+		branchLoading[id] = true;
+		try {
+			repoBranches[id] = await api.repos.branches(id);
+		} catch {
+			repoBranches[id] = [];
+		} finally {
+			branchLoading[id] = false;
+		}
+	}
+
+	async function changeBranch(id: number, branch: string) {
+		await api.repos.update(id, { branch });
+		await refresh();
 	}
 
 	async function addRepo() {
@@ -129,9 +148,21 @@
 		<tbody>
 			{#each repos as repo}
 				{@const s = connStatus[repo.id]}
+				{@const branches = repoBranches[repo.id]}
 				<tr>
 					<td>{repo.url}</td>
-					<td>{repo.branch}</td>
+					<td>
+						{#if branches && branches.length > 0}
+							<select value={repo.branch} onchange={(e) => changeBranch(repo.id, (e.target as HTMLSelectElement).value)}
+								style="font-size:0.8rem;padding:0.2rem 0.3rem">
+								{#each branches as b}
+									<option value={b} selected={b === repo.branch}>{b}</option>
+								{/each}
+							</select>
+						{:else}
+							{repo.branch}
+						{/if}
+					</td>
 					<td>{repo.poll_interval}s</td>
 					<td>{repo.is_monorepo ? 'Yes' : 'No'}</td>
 					<td>

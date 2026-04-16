@@ -144,6 +144,29 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
     }
   }
 
+  if (req.method === "GET" && path.match(/^\/api\/repos\/\d+\/branches$/)) {
+    const id = parseInt(path.split("/")[3]);
+    const repo = db.query("SELECT * FROM repos WHERE id = ?").get(id) as any;
+    if (!repo) return Response.json({ error: "not found" }, { status: 404 });
+
+    const sshEnv = sshEnvForRepo(repo);
+    try {
+      const proc = Bun.spawn(["git", "ls-remote", "--heads", repo.url], {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: sshEnv ? { ...process.env, ...sshEnv } : undefined,
+      });
+      const output = await new Response(proc.stdout).text();
+      await proc.exited;
+      const branches = output.trim().split("\n").filter(Boolean)
+        .map((line) => line.split("\t")[1]?.replace("refs/heads/", ""))
+        .filter(Boolean);
+      return Response.json(branches);
+    } finally {
+      cleanupSshKey(repo.id);
+    }
+  }
+
   if (req.method === "GET" && path.match(/^\/api\/repos\/\d+\/test$/)) {
     const id = parseInt(path.split("/")[3]);
     const repo = db.query("SELECT * FROM repos WHERE id = ?").get(id) as any;

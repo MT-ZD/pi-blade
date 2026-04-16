@@ -58,6 +58,7 @@ export const api = {
 			request<{ publicKey: string }>('/repos/' + id + '/generate-key', { method: 'POST' }),
 		getPublicKey: (id: number) =>
 			request<{ publicKey: string }>('/repos/' + id + '/public-key'),
+		branches: (id: number) => request<string[]>('/repos/' + id + '/branches'),
 		test: (id: number) =>
 			request<{ ok: boolean; error?: string }>('/repos/' + id + '/test'),
 		detectProjects: (id: number) =>
