@@ -59,7 +59,7 @@ async function pollProjectBranch(project: any, branch: string, repo: any, sshEnv
   }
 
   console.log(`[poller] Triggering build for "${project.name}" branch ${branch}`);
-  await buildAndDeploy(project, repo, latestCommit, branch);
+  await buildAndDeploy(project, repo, latestCommit, branch, "poller");
 }
 
 export function startPoller() {

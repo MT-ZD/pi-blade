@@ -64,6 +64,7 @@
 				<th style="cursor:pointer" onclick={() => toggleSort('branch')}>Branch{sortIcon('branch')}</th>
 				<th>Image</th>
 				<th style="cursor:pointer" onclick={() => toggleSort('status')}>Status{sortIcon('status')}</th>
+				<th style="cursor:pointer" onclick={() => toggleSort('trigger')}>Trigger{sortIcon('trigger')}</th>
 				<th style="cursor:pointer" onclick={() => toggleSort('timestamp')}>Time{sortIcon('timestamp')}</th>
 			</tr>
 		</thead>
@@ -75,6 +76,7 @@
 					<td><code>{d.branch || '-'}</code></td>
 					<td><a href="/deploys/{d.id}"><code>{d.image_tag}</code></a></td>
 					<td><span class="badge {d.status}">{d.status}</span></td>
+					<td class="text-sm text-muted">{d.trigger || 'manual'}</td>
 					<td class="text-muted text-sm">{new Date(d.timestamp + 'Z').toLocaleString()}</td>
 				</tr>
 			{/each}

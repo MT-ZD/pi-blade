@@ -86,7 +86,7 @@ async function runCmd(cmd: string[], opts?: { cwd?: string; env?: Record<string,
   return stdout.trim();
 }
 
-export async function buildAndDeploy(project: any, repo: any, commitSha: string, branch?: string) {
+export async function buildAndDeploy(project: any, repo: any, commitSha: string, branch?: string, trigger: string = "manual") {
   const db = getDb();
   const deployBranch = branch || "main";
   const imageTag = commitSha.slice(0, 12);
@@ -120,9 +120,9 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
   const deployIds: number[] = [];
   for (const blade of blades) {
     const result = db.query(`
-      INSERT INTO deploys (project_id, image_tag, commit_sha, branch, blade_id, status)
-      VALUES (?1, ?2, ?3, ?4, ?5, 'building')
-    `).run(project.id, imageTag, commitSha, deployBranch, blade.id);
+      INSERT INTO deploys (project_id, image_tag, commit_sha, branch, blade_id, status, trigger)
+      VALUES (?1, ?2, ?3, ?4, ?5, 'building', ?6)
+    `).run(project.id, imageTag, commitSha, deployBranch, blade.id, trigger);
     deployIds.push(Number(result.lastInsertRowid));
   }
 
@@ -303,8 +303,8 @@ export async function triggerRollback(projectId: number, bladeId: number, imageT
   }
 
   db.query(`
-    INSERT INTO deploys (project_id, image_tag, blade_id, status)
-    VALUES (?1, ?2, ?3, 'running')
+    INSERT INTO deploys (project_id, image_tag, blade_id, status, trigger)
+    VALUES (?1, ?2, ?3, 'running', 'rollback')
   `).run(projectId, imageTag, bladeId);
 
   return { ok: true };

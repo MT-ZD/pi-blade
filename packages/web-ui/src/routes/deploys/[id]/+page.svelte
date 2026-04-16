@@ -156,6 +156,7 @@
 			<div><span class="text-muted">Commit:</span> <code>{deploy.commit_sha || '-'}</code></div>
 			<div><span class="text-muted">Blade:</span> <a href="/blades/{deploy.blade_id}">{deploy.blade_name}</a></div>
 			<div><span class="text-muted">Time:</span> {new Date(deploy.timestamp + 'Z').toLocaleString()}</div>
+			<div><span class="text-muted">Trigger:</span> {deploy.trigger || 'manual'}</div>
 			<div><span class="text-muted">Repo:</span> {deploy.repo_url}</div>
 			{#if health}
 				<div>

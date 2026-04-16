@@ -151,7 +151,7 @@
 	<h2 class="mb-1">Recent Deploys</h2>
 	<div class="card">
 		<table>
-			<thead><tr><th>Project</th><th>Branch</th><th>Image</th><th>Status</th><th>Time</th></tr></thead>
+			<thead><tr><th>Project</th><th>Branch</th><th>Image</th><th>Status</th><th>Trigger</th><th>Time</th></tr></thead>
 			<tbody>
 				{#each deploys as d}
 					<tr>
@@ -159,6 +159,7 @@
 						<td><code>{d.branch || '-'}</code></td>
 						<td><a href="/deploys/{d.id}"><code>{d.image_tag}</code></a></td>
 						<td><span class="badge {d.status}">{d.status}</span></td>
+						<td class="text-sm text-muted">{d.trigger || 'manual'}</td>
 						<td class="text-muted text-sm">{new Date(d.timestamp + 'Z').toLocaleString()}</td>
 					</tr>
 				{/each}

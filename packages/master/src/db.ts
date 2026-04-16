@@ -140,6 +140,19 @@ function migrate(db: Database) {
     db.exec("ALTER TABLE projects ADD COLUMN build_context TEXT");
   } catch (_) {}
 
+  try {
+    db.exec("ALTER TABLE deploys ADD COLUMN trigger TEXT DEFAULT 'manual'");
+  } catch (_) {}
+
+  // Fix stale running deploys — keep only latest running per project+branch+blade
+  db.exec(`
+    UPDATE deploys SET status = 'superseded'
+    WHERE status = 'running' AND id NOT IN (
+      SELECT MAX(id) FROM deploys WHERE status = 'running'
+      GROUP BY project_id, branch, blade_id
+    )
+  `);
+
   // Migrate project_blades: remove port column if it exists (old schema)
   try {
     const cols = db.query("PRAGMA table_info(project_blades)").all() as any[];
