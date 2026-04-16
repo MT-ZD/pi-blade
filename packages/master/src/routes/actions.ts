@@ -1,4 +1,5 @@
 import { getDb } from "../db.ts";
+import { BLADE_AGENT_PORT } from "@pi-blade/shared";
 import { buildAndDeploy, triggerRollback } from "../services/builder.ts";
 import { regenerateNginxConfig } from "../services/nginx.ts";
 import { getLatestMetrics, getBladeVersions } from "../services/monitor.ts";
@@ -75,6 +76,26 @@ export async function handleActionRoutes(req: Request, path: string): Promise<Re
       ORDER BY timestamp ASC
     `).all(bladeId, hours);
     return Response.json(rows);
+  }
+
+  // GET /api/blades/:id/container-logs/:container
+  if (req.method === "GET" && path.match(/^\/api\/blades\/\d+\/container-logs\/.+$/)) {
+    const parts = path.split("/");
+    const bladeId = parseInt(parts[3]);
+    const container = decodeURIComponent(parts[5]);
+    const blade = db.query("SELECT * FROM blades WHERE id = ?").get(bladeId) as any;
+    if (!blade) return Response.json({ error: "blade not found" }, { status: 404 });
+
+    const url = new URL(req.url);
+    const tail = url.searchParams.get("tail") || "200";
+    try {
+      const res = await fetch(`http://${blade.hostname}:${BLADE_AGENT_PORT}/logs/${encodeURIComponent(container)}?tail=${tail}`, {
+        signal: AbortSignal.timeout(10_000),
+      });
+      return Response.json(await res.json());
+    } catch (e: any) {
+      return Response.json({ error: e.message }, { status: 502 });
+    }
   }
 
   if (req.method === "GET" && path === "/api/metrics") {

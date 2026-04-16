@@ -138,6 +138,24 @@ const server = Bun.serve({
     if (method === "GET" && url.pathname === "/version") return handleVersion();
     if (method === "GET" && url.pathname === "/metrics") return handleMetrics();
 
+    if (method === "GET" && url.pathname.startsWith("/logs/")) {
+      const container = decodeURIComponent(url.pathname.slice(6));
+      const tail = url.searchParams.get("tail") || "200";
+      try {
+        const proc = Bun.spawn(["docker", "logs", "--tail", tail, container], {
+          stdout: "pipe", stderr: "pipe",
+        });
+        const [stdout, stderr] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+        ]);
+        await proc.exited;
+        return Response.json({ logs: stdout + stderr });
+      } catch (e: any) {
+        return Response.json({ error: e.message }, { status: 500 });
+      }
+    }
+
     return new Response("not found", { status: 404 });
   },
 });

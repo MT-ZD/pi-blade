@@ -29,6 +29,10 @@
 	let logEventSource: EventSource | null = null;
 	let logImageTag = $state('');
 
+	let containerLogLines = $state<string[]>([]);
+	let containerLogTitle = $state('');
+	let containerLogOpen = $state(false);
+
 	const projectId = parseInt($page.params.id);
 
 	onMount(async () => {
@@ -235,6 +239,20 @@
 		deploys = await api.deploys.byProject(projectId);
 	}
 
+	async function viewContainerLogs(branch: string) {
+		if (!project?.blades?.length) return;
+		const containerName = `${project.name.toLowerCase()}-${branch.replace(/\//g, '-')}`;
+		const blade = project.blades[0]; // use first blade
+		containerLogTitle = `${containerName} on ${blade.name}`;
+		containerLogOpen = true;
+		try {
+			const res = await api.blades.containerLogs(blade.id, containerName, 500);
+			containerLogLines = (res.logs || 'No logs').split('\n');
+		} catch (e: any) {
+			containerLogLines = [`Failed to fetch logs: ${e.message}`];
+		}
+	}
+
 	function globalVars() { return vars.filter((v: any) => v.scope === 'global'); }
 	function branchVars(branch: string) { return vars.filter((v: any) => v.scope === branch); }
 	function availableBlades() {
@@ -351,6 +369,9 @@
 								{/if}
 							</td>
 							<td class="flex gap-1" style="justify-content:flex-end">
+								{#if ver}
+									<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => viewContainerLogs(b.branch)}>Container Logs</button>
+								{/if}
 								<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deployBranch(b.branch)}>Deploy</button>
 								<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeBranch(b.branch)}>Remove</button>
 							</td>
@@ -362,6 +383,23 @@
 			<div class="text-muted" style="padding:0.75rem">No branches configured</div>
 		{/if}
 	</div>
+
+	{#if containerLogOpen}
+		<div class="card mb-2" style="border:1px solid var(--info)">
+			<div class="flex justify-between items-center mb-1">
+				<strong class="text-sm">{containerLogTitle}</strong>
+				<div class="flex gap-1">
+					<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewContainerLogs(containerLogTitle.split('-').slice(1).join('-').split(' on ')[0])}>Refresh</button>
+					<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => containerLogOpen = false}>Close</button>
+				</div>
+			</div>
+			<div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;max-height:400px;overflow-y:auto;font-family:monospace;font-size:0.75rem;line-height:1.5;white-space:pre-wrap;word-break:break-all">
+				{#each containerLogLines as line}
+					{line}
+{/each}
+			</div>
+		</div>
+	{/if}
 
 	<!-- Blades -->
 	<div class="flex justify-between items-center mb-1">

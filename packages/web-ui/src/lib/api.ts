@@ -46,7 +46,9 @@ export const api = {
 	},
 	blades: {
 		list: () => request<any[]>('/blades'),
-		remove: (id: number) => request('/blades/' + id, { method: 'DELETE' })
+		remove: (id: number) => request('/blades/' + id, { method: 'DELETE' }),
+		containerLogs: (bladeId: number, container: string, tail = 200) =>
+			request<{ logs: string }>('/blades/' + bladeId + '/container-logs/' + encodeURIComponent(container) + '?tail=' + tail)
 	},
 	repos: {
 		list: () => request<any[]>('/repos'),
