@@ -142,7 +142,7 @@
 		{@const m = metrics[blade.id]}
 		<div class="card">
 			<div class="flex justify-between items-center mb-1">
-				<h3>{blade.name}</h3>
+				<h3><a href="/blades/{blade.id}">{blade.name}</a></h3>
 				<span class="badge {blade.status}">{blade.status}</span>
 			</div>
 			<div class="text-sm text-muted mb-1">{blade.hostname}</div>

@@ -19,9 +19,7 @@
 	}
 
 	async function testAll() {
-		for (const repo of repos) {
-			connStatus[repo.id] = { ok: false, loading: true };
-		}
+		for (const repo of repos) connStatus[repo.id] = { ok: false, loading: true };
 		await Promise.all(repos.map(async (repo) => {
 			try {
 				const res = await api.repos.test(repo.id);
@@ -33,11 +31,7 @@
 	}
 
 	async function addRepo() {
-		await api.repos.create({
-			...form,
-			sshKey: form.sshKey || undefined,
-			githubToken: form.githubToken || undefined,
-		});
+		await api.repos.create({ ...form, sshKey: form.sshKey || undefined, githubToken: form.githubToken || undefined });
 		form = { url: '', pollInterval: 60, isMonorepo: false, sshKey: '', githubToken: '' };
 		showForm = false;
 		await refresh();
@@ -45,12 +39,8 @@
 
 	function startEdit(repo: any) {
 		editingId = repo.id;
-		editForm = {
-			url: repo.url,
-			pollInterval: repo.poll_interval,
-			isMonorepo: !!repo.is_monorepo,
-			githubToken: '',
-		};
+		editForm = { url: repo.url, pollInterval: repo.poll_interval, isMonorepo: !!repo.is_monorepo, githubToken: '' };
+		showForm = false;
 	}
 
 	async function saveEdit() {
@@ -60,10 +50,6 @@
 		await api.repos.update(editingId, data);
 		editingId = null;
 		await refresh();
-	}
-
-	function cancelEdit() {
-		editingId = null;
 	}
 
 	async function removeRepo(id: number) {
@@ -78,9 +64,7 @@
 			const res = await api.repos.generateKey(id);
 			generatedKey = { repoId: id, publicKey: res.publicKey };
 			await refresh();
-		} finally {
-			generating = false;
-		}
+		} finally { generating = false; }
 	}
 
 	async function showPublicKey(id: number) {
@@ -101,41 +85,52 @@
 
 <div class="flex justify-between items-center mb-2">
 	<h1>Repositories</h1>
-	<button onclick={() => showForm = !showForm}>{showForm ? 'Cancel' : 'Add Repo'}</button>
+	<button onclick={() => { showForm = !showForm; editingId = null; }}>{showForm ? 'Cancel' : 'Add Repo'}</button>
 </div>
 
 {#if showForm}
 	<div class="card mb-2">
 		<div class="grid grid-2 gap-2 mb-1">
-			<div>
-				<label class="text-sm text-muted">Repository URL</label>
-				<input bind:value={form.url} placeholder="git@github.com:user/repo.git" />
-			</div>
-			<div>
-				<label class="text-sm text-muted">Poll Interval (seconds)</label>
-				<input type="number" bind:value={form.pollInterval} />
-			</div>
-			<div class="flex items-center gap-1" style="padding-top:1.2rem">
-				<input type="checkbox" bind:checked={form.isMonorepo} id="monorepo" style="width:auto" />
-				<label for="monorepo" class="text-sm">Monorepo</label>
-			</div>
+			<div><label class="text-sm text-muted">Repository URL</label><input bind:value={form.url} placeholder="git@github.com:user/repo.git" /></div>
+			<div><label class="text-sm text-muted">Poll Interval (seconds)</label><input type="number" bind:value={form.pollInterval} /></div>
 		</div>
-		<details class="mb-1">
-			<summary class="text-sm" style="cursor:pointer">SSH Key (for private repos)</summary>
-			<div style="margin-top:0.5rem">
-				<label class="text-sm text-muted">Paste private key (optional — can generate after saving)</label>
-				<textarea bind:value={form.sshKey} rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" style="font-family:monospace;font-size:0.75rem"></textarea>
-			</div>
+		<div class="flex items-center gap-1 mb-1">
+			<input type="checkbox" bind:checked={form.isMonorepo} id="monorepo" style="width:auto" />
+			<label for="monorepo" class="text-sm">Monorepo</label>
+		</div>
+		<details class="mb-1"><summary class="text-sm" style="cursor:pointer">SSH Key</summary>
+			<textarea bind:value={form.sshKey} rows="3" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" style="font-family:monospace;font-size:0.75rem;margin-top:0.5rem"></textarea>
 		</details>
-		<details class="mb-1">
-			<summary class="text-sm" style="cursor:pointer">GitHub Token (for commit statuses)</summary>
-			<div style="margin-top:0.5rem">
-				<label class="text-sm text-muted">Personal Access Token with <code>repo:status</code> scope</label>
-				<input type="password" bind:value={form.githubToken} placeholder="ghp_..." />
-			</div>
+		<details class="mb-1"><summary class="text-sm" style="cursor:pointer">GitHub Token</summary>
+			<input type="password" bind:value={form.githubToken} placeholder="ghp_..." style="margin-top:0.5rem" />
 		</details>
 		<button onclick={addRepo}>Save</button>
 	</div>
+{/if}
+
+{#if editingId !== null}
+	{@const repo = repos.find(r => r.id === editingId)}
+	{#if repo}
+		<div class="card mb-2" style="border:1px solid var(--primary)">
+			<h3 class="mb-1">Edit Repository</h3>
+			<div class="grid grid-2 gap-2 mb-1">
+				<div><label class="text-sm text-muted">URL</label><input bind:value={editForm.url} /></div>
+				<div><label class="text-sm text-muted">Poll Interval</label><input type="number" bind:value={editForm.pollInterval} /></div>
+			</div>
+			<div class="flex items-center gap-1 mb-1">
+				<input type="checkbox" bind:checked={editForm.isMonorepo} style="width:auto" />
+				<label class="text-sm">Monorepo</label>
+			</div>
+			<div class="mb-1">
+				<label class="text-sm text-muted">GitHub Token (leave empty to keep current)</label>
+				<input type="password" bind:value={editForm.githubToken} placeholder="ghp_..." />
+			</div>
+			<div class="flex gap-1">
+				<button onclick={saveEdit}>Save</button>
+				<button class="secondary" onclick={() => editingId = null}>Cancel</button>
+			</div>
+		</div>
+	{/if}
 {/if}
 
 {#if generatedKey}
@@ -144,86 +139,45 @@
 			<strong class="text-sm">Deploy Key (public)</strong>
 			<button onclick={() => generatedKey = null} style="font-size:0.75rem;padding:0.2rem 0.5rem">Close</button>
 		</div>
-		<p class="text-sm text-muted mb-1">Add this key to your repository's deploy keys settings:</p>
-		<pre style="font-size:0.7rem;overflow-x:auto;padding:0.5rem;background:var(--bg-secondary);border-radius:4px">{generatedKey.publicKey}</pre>
+		<pre style="font-size:0.7rem;overflow-x:auto;padding:0.5rem;background:var(--bg);border-radius:4px">{generatedKey.publicKey}</pre>
 		<button onclick={copyKey} style="font-size:0.75rem;padding:0.3rem 0.6rem;margin-top:0.5rem">Copy</button>
 	</div>
 {/if}
 
-<div class="card">
-	<table>
-		<thead>
-			<tr><th>URL</th><th>Poll</th><th>Monorepo</th><th>Status</th><th>SSH</th><th>GitHub</th><th></th></tr>
-		</thead>
-		<tbody>
-			{#each repos as repo}
-				{@const s = connStatus[repo.id]}
-				{#if editingId === repo.id}
-					<tr>
-						<td><input bind:value={editForm.url} style="font-size:0.8rem;width:100%" /></td>
-						<td><input type="number" bind:value={editForm.pollInterval} style="font-size:0.8rem;width:60px" /></td>
-						<td><input type="checkbox" bind:checked={editForm.isMonorepo} style="width:auto" /></td>
-						<td>
-							{#if !s || s.loading}
-								<span class="text-muted text-sm">testing...</span>
-							{:else if s.ok}
-								<span class="badge online">connected</span>
-							{:else}
-								<span class="badge offline" title={s.error}>failed</span>
-							{/if}
-						</td>
-						<td></td>
-						<td>
-							<input type="password" bind:value={editForm.githubToken} placeholder="ghp_..." style="font-size:0.75rem;width:100px" />
-						</td>
-						<td class="flex gap-1">
-							<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={saveEdit}>Save</button>
-							<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={cancelEdit}>Cancel</button>
-						</td>
-					</tr>
+{#each repos as repo}
+	{@const s = connStatus[repo.id]}
+	<div class="card mb-1">
+		<div class="flex justify-between items-center">
+			<div>
+				<strong>{repo.url}</strong>
+				<div class="flex gap-1 items-center" style="margin-top:0.25rem">
+					<span class="text-sm text-muted">Poll: {repo.poll_interval}s</span>
+					{#if repo.is_monorepo}<span class="badge pending" style="font-size:0.65rem">monorepo</span>{/if}
+					{#if !s || s.loading}
+						<span class="text-muted text-sm">testing...</span>
+					{:else if s.ok}
+						<span class="badge online" style="font-size:0.65rem">connected</span>
+					{:else}
+						<span class="badge offline" style="font-size:0.65rem" title={s.error}>failed</span>
+					{/if}
+					{#if repo.has_ssh_key}<span class="badge online" style="font-size:0.6rem">SSH</span>{/if}
+					{#if repo.has_github_token}<span class="badge online" style="font-size:0.6rem">PAT</span>{/if}
+				</div>
+			</div>
+			<div class="flex gap-1">
+				{#if repo.has_ssh_key}
+					<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => showPublicKey(repo.id)}>View Key</button>
+					<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeKey(repo.id)}>Remove Key</button>
 				{:else}
-					<tr>
-						<td>{repo.url}</td>
-						<td>{repo.poll_interval}s</td>
-						<td>{repo.is_monorepo ? 'Yes' : 'No'}</td>
-						<td>
-							{#if !s || s.loading}
-								<span class="text-muted text-sm">testing...</span>
-							{:else if s.ok}
-								<span class="badge online">connected</span>
-							{:else}
-								<span class="badge offline" title={s.error}>failed</span>
-							{/if}
-						</td>
-						<td>
-							{#if repo.has_ssh_key}
-								<span style="color:var(--success)" title="SSH key configured">&#x1f512;</span>
-								<button onclick={() => showPublicKey(repo.id)} style="font-size:0.65rem;padding:0.15rem 0.4rem">View</button>
-								<button onclick={() => removeKey(repo.id)} style="font-size:0.65rem;padding:0.15rem 0.4rem" class="danger">Remove</button>
-							{:else}
-								<button onclick={() => generateKey(repo.id)} disabled={generating} style="font-size:0.65rem;padding:0.15rem 0.4rem">
-									{generating ? '...' : 'Generate'}
-								</button>
-							{/if}
-						</td>
-						<td>
-							{#if repo.has_github_token}
-								<span class="badge online" style="font-size:0.65rem">PAT set</span>
-								<button onclick={() => api.repos.update(repo.id, { githubToken: null }).then(refresh)} style="font-size:0.6rem;padding:0.1rem 0.3rem" class="danger">x</button>
-							{:else}
-								<span class="text-muted text-sm">none</span>
-							{/if}
-						</td>
-						<td class="flex gap-1">
-							<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => startEdit(repo)}>Edit</button>
-							<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeRepo(repo.id)}>Delete</button>
-						</td>
-					</tr>
+					<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => generateKey(repo.id)} disabled={generating}>{generating ? '...' : 'Generate Key'}</button>
 				{/if}
-			{/each}
-		</tbody>
-	</table>
-	{#if repos.length === 0}
-		<div class="text-muted" style="padding:1rem">No repositories linked</div>
-	{/if}
-</div>
+				<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => startEdit(repo)}>Edit</button>
+				<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeRepo(repo.id)}>Delete</button>
+			</div>
+		</div>
+	</div>
+{/each}
+
+{#if repos.length === 0 && !showForm}
+	<div class="card text-muted">No repositories linked</div>
+{/if}

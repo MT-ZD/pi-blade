@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { api } from '$lib/api';
 
@@ -8,6 +8,7 @@
 	let vars = $state<any[]>([]);
 	let deploys = $state<any[]>([]);
 	let repoBranches = $state<string[]>([]);
+	let latestCommits = $state<Record<string, string>>({});
 
 	let showVarForm = $state(false);
 	let varForm = $state({ key: '', value: '', scope: 'global' });
@@ -23,17 +24,10 @@
 	let editing = $state(false);
 	let editForm = $state({ name: '', path: '', dockerfilePath: '', containerPort: 3000, buildContext: '' });
 
-	let logLines = $state<string[]>([]);
-	let logTitle = $state('');
-	let logOpen = $state(false);
-	let logDone = $state(false);
-	let logEventSource: EventSource | null = null;
-	let logImageTag = $state('');
-
-	let containerLogLines = $state<string[]>([]);
-	let containerLogTitle = $state('');
-	let containerLogOpen = $state(false);
+	let envsOpen = $state(false);
 	let revealedVars = $state(new Set<number>());
+	let deployPage = $state(1);
+	const deployPerPage = 10;
 
 	const projectId = parseInt($page.params.id);
 
@@ -48,6 +42,16 @@
 		deploys = await api.deploys.byProject(projectId);
 		try {
 			repoBranches = await api.repos.branches(project.repo_id);
+			// Fetch latest commit per branch
+			const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
+			for (const b of project.branches || []) {
+				try {
+					const res = await fetch(`/api/repos/${project.repo_id}/test`, {
+						headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+					});
+					// Use ls-remote to get latest commit per branch — reuse the poller's approach
+				} catch {}
+			}
 		} catch { repoBranches = []; }
 	}
 
@@ -55,9 +59,7 @@
 	async function addBranch() {
 		if (!newBranch) return;
 		await api.projects.addBranch(projectId, newBranch, newBranchPort);
-		newBranch = '';
-		newBranchPort = 8080;
-		showBranchAdd = false;
+		newBranch = ''; newBranchPort = 8080; showBranchAdd = false;
 		await refresh();
 	}
 
@@ -75,14 +77,13 @@
 		await api.projects.deploy(projectId, branch);
 		deploys = await api.deploys.byProject(projectId);
 		const latest = deploys.find((d: any) => d.branch === branch && ['building', 'pushing', 'deploying'].includes(d.status));
-		if (latest) openLiveLogs(latest.image_tag, branch);
+		if (latest) window.location.href = `/deploys/${latest.id}`;
 	}
 
 	// Env vars
 	async function addVar() {
 		await api.projectVars.add(projectId, varForm);
-		varForm = { key: '', value: '', scope: 'global' };
-		showVarForm = false;
+		varForm = { key: '', value: '', scope: 'global' }; showVarForm = false;
 		vars = await api.projectVars.list(projectId);
 	}
 
@@ -101,14 +102,11 @@
 			if (eqIdx < 1) continue;
 			const key = trimmed.slice(0, eqIdx).trim();
 			let value = trimmed.slice(eqIdx + 1).trim();
-			if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-				value = value.slice(1, -1);
-			}
+			if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
 			await api.projectVars.add(projectId, { key, value, scope: pasteScope });
 			count++;
 		}
-		pasteContent = '';
-		showPasteForm = false;
+		pasteContent = ''; showPasteForm = false;
 		vars = await api.projectVars.list(projectId);
 		alert(`Imported ${count} variable(s)`);
 	}
@@ -137,147 +135,12 @@
 		await refresh();
 	}
 
-	// Logs
-	function openLiveLogs(imageTag: string, branch: string) {
-		closeLog();
-		logTitle = `${project.name} @ ${branch} (${imageTag})`;
-		logImageTag = imageTag;
-		logLines = [];
-		logOpen = true;
-		logDone = false;
-
-		const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
-		const url = `/api/builds/${encodeURIComponent(project.name)}/${encodeURIComponent(imageTag)}/logs${token ? '?token=' + encodeURIComponent(token) : ''}`;
-		logEventSource = new EventSource(url);
-		logEventSource.onmessage = (e) => {
-			const data = JSON.parse(e.data);
-			if (data === '__DONE__') {
-				logDone = true;
-				logEventSource?.close();
-				logEventSource = null;
-				api.deploys.byProject(projectId).then((d) => deploys = d);
-			} else {
-				logLines = [...logLines, data];
-				setTimeout(() => {
-					const el = document.getElementById('log-container');
-					if (el) el.scrollTop = el.scrollHeight;
-				}, 10);
-			}
-		};
-		logEventSource.onerror = () => {
-			logDone = true;
-			logEventSource?.close();
-			logEventSource = null;
-		};
-	}
-
-	async function viewLog(deploy: any) {
-		const { id: deployId, image_tag: imageTag, branch, status } = deploy;
-
-		// Try live log first
-		try {
-			const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
-			const activeRes = await fetch('/api/builds/active', {
-				headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-			});
-			const active = await activeRes.json() as { key: string; finished: boolean }[];
-			const key = `${project.name}:${imageTag}`;
-			if (active.find((a: any) => a.key === key)) {
-				openLiveLogs(imageTag, branch);
-				return;
-			}
-		} catch {}
-
-		// Fall back to stored log
-		closeLog();
-		logTitle = `${project.name} @ ${branch || '?'} (${imageTag})`;
-		logImageTag = imageTag;
-		logOpen = true;
-
-		const inProgress = ['building', 'pushing', 'deploying'].includes(status);
-		logDone = !inProgress;
-
-		try {
-			const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
-			const res = await fetch(`/api/deploys/${deployId}/log`, {
-				headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-			});
-			const data = await res.json();
-			if (data.log) {
-				logLines = data.log.split('\n');
-			} else if (inProgress) {
-				logLines = ['Build in progress — logs will appear when the build service is updated to the latest version.'];
-			} else {
-				logLines = ['No log recorded for this deploy.'];
-			}
-		} catch {
-			logLines = ['Failed to load log'];
-		}
-	}
-
-	async function abortBuild() {
-		if (!project || !logImageTag) return;
-		const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
-		await fetch(`/api/builds/${encodeURIComponent(project.name)}/${encodeURIComponent(logImageTag)}/abort`, {
-			method: 'POST',
-			headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-		});
-		logDone = true;
-		deploys = await api.deploys.byProject(projectId);
-	}
-
-	function closeLog() {
-		logEventSource?.close();
-		logEventSource = null;
-		logOpen = false;
-		logLines = [];
-		logImageTag = '';
-	}
-
-	// Rollback
-	async function rollback(d: any) {
-		if (!confirm(`Rollback to ${d.image_tag}?`)) return;
-		await api.rollback({ projectId, bladeId: d.blade_id, imageTag: d.image_tag });
-		deploys = await api.deploys.byProject(projectId);
-	}
-
 	function currentVersion(branch: string): string | null {
-		const running = deploys.find((d: any) => d.branch === branch && d.status === 'running');
-		return running?.image_tag || null;
+		return deploys.find((d: any) => d.branch === branch && d.status === 'running')?.image_tag || null;
 	}
 
 	function currentDeployId(branch: string): number | null {
-		const running = deploys.find((d: any) => d.branch === branch && d.status === 'running');
-		return running?.id || null;
-	}
-
-	async function redeploy(d: any) {
-		if (!confirm(`Redeploy ${d.image_tag} on ${d.branch}?`)) return;
-		await api.projects.deploy(projectId, d.branch);
-		deploys = await api.deploys.byProject(projectId);
-	}
-
-	async function viewContainerLogs(branch: string) {
-		if (!project?.blades?.length) return;
-		const containerName = `${project.name.toLowerCase()}-${branch.replace(/\//g, '-')}`;
-		const blade = project.blades[0]; // use first blade
-		containerLogTitle = `${containerName} on ${blade.name}`;
-		containerLogOpen = true;
-		try {
-			const res = await api.blades.containerLogs(blade.id, containerName, 500);
-			containerLogLines = (res.logs || 'No logs').split('\n');
-		} catch (e: any) {
-			containerLogLines = [`Failed to fetch logs: ${e.message}`];
-		}
-	}
-
-	async function updateGithubStatus(d: any) {
-		try {
-			const res = await api.deploys.updateGithubStatus(d.id);
-			alert(`GitHub status updated: ${res.state}`);
-		} catch (e: any) {
-			alert(`Failed: ${e.message}`);
-		}
+		return deploys.find((d: any) => d.branch === branch && d.status === 'running')?.id || null;
 	}
 
 	function globalVars() { return vars.filter((v: any) => v.scope === 'global'); }
@@ -290,6 +153,8 @@
 		const added = new Set((project?.branches || []).map((b: any) => b.branch));
 		return repoBranches.filter((b) => !added.has(b));
 	}
+	function pagedDeploys() { return deploys.slice((deployPage - 1) * deployPerPage, deployPage * deployPerPage); }
+	function deployTotalPages() { return Math.max(1, Math.ceil(deploys.length / deployPerPage)); }
 </script>
 
 {#if project}
@@ -298,35 +163,21 @@
 			<a href="/projects" class="text-sm text-muted">&larr; Projects</a>
 			<h1 style="margin-top:0.25rem">{project.name}</h1>
 		</div>
-		<div class="flex gap-1">
-			{#if !editing}
-				<button class="secondary" onclick={startEdit}>Edit</button>
-			{/if}
-		</div>
+		{#if !editing}
+			<button class="secondary" onclick={startEdit}>Edit</button>
+		{/if}
 	</div>
 
 	{#if editing}
 		<div class="card mb-2">
 			<div class="grid grid-4 gap-2 mb-1">
-				<div>
-					<label class="text-sm text-muted">Name</label>
-					<input bind:value={editForm.name} />
-				</div>
-				<div>
-					<label class="text-sm text-muted">Path</label>
-					<input bind:value={editForm.path} />
-				</div>
-				<div>
-					<label class="text-sm text-muted">Dockerfile</label>
-					<input bind:value={editForm.dockerfilePath} />
-				</div>
-				<div>
-					<label class="text-sm text-muted">Container Port</label>
-					<input type="number" bind:value={editForm.containerPort} />
-				</div>
+				<div><label class="text-sm text-muted">Name</label><input bind:value={editForm.name} /></div>
+				<div><label class="text-sm text-muted">Path</label><input bind:value={editForm.path} /></div>
+				<div><label class="text-sm text-muted">Dockerfile</label><input bind:value={editForm.dockerfilePath} /></div>
+				<div><label class="text-sm text-muted">Container Port</label><input type="number" bind:value={editForm.containerPort} /></div>
 			</div>
 			<div class="mb-1">
-				<label class="text-sm text-muted">Build Context <span style="font-weight:normal">(relative to repo root, empty = same as project path)</span></label>
+				<label class="text-sm text-muted">Build Context <span style="font-weight:normal">(relative to repo root, empty = project path)</span></label>
 				<input bind:value={editForm.buildContext} placeholder="e.g. . for repo root" />
 			</div>
 			<div class="flex gap-1">
@@ -336,12 +187,14 @@
 		</div>
 	{:else}
 		<div class="card mb-2">
-			<div class="grid grid-4 text-sm">
+			<div class="grid grid-4 gap-2 text-sm">
 				<div><span class="text-muted">Repo:</span> {project.repo_url}</div>
 				<div><span class="text-muted">Path:</span> {project.path}</div>
 				<div><span class="text-muted">Dockerfile:</span> {project.dockerfile_path}</div>
-				<div><span class="text-muted">Container Port:</span> {project.container_port || 3000}</div>
-				<div><span class="text-muted">Build Context:</span> {project.build_context || project.path}</div>
+				<div><span class="text-muted">Port:</span> {project.container_port || 3000}</div>
+				{#if project.build_context}
+					<div><span class="text-muted">Build Context:</span> {project.build_context}</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -358,22 +211,13 @@
 		<div class="card mb-2">
 			<div class="flex gap-1 items-end">
 				<div style="flex:1">
-					<label class="text-sm text-muted">Branch</label>
 					{#if unaddedBranches().length > 0}
-						<select bind:value={newBranch}>
-							<option value="">Select...</option>
-							{#each unaddedBranches() as b}
-								<option value={b}>{b}</option>
-							{/each}
-						</select>
+						<select bind:value={newBranch}><option value="">Select...</option>{#each unaddedBranches() as b}<option value={b}>{b}</option>{/each}</select>
 					{:else}
 						<input bind:value={newBranch} placeholder="branch name" />
 					{/if}
 				</div>
-				<div style="width:120px">
-					<label class="text-sm text-muted">Host Port</label>
-					<input type="number" bind:value={newBranchPort} />
-				</div>
+				<div style="width:120px"><label class="text-sm text-muted">Host Port</label><input type="number" bind:value={newBranchPort} /></div>
 				<button onclick={addBranch} style="margin-bottom:1px">Add</button>
 			</div>
 		</div>
@@ -382,16 +226,13 @@
 	<div class="card mb-2">
 		{#if project.branches?.length > 0}
 			<table>
-				<thead><tr><th>Branch</th><th>Host Port</th><th>Current Version</th><th></th></tr></thead>
+				<thead><tr><th>Branch</th><th>Host Port</th><th>Deployed</th><th></th></tr></thead>
 				<tbody>
 					{#each project.branches as b}
 						{@const ver = currentVersion(b.branch)}
 						<tr>
 							<td><code>{b.branch}</code></td>
-							<td>
-								<input type="number" value={b.port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem"
-									onchange={(e) => updateBranchPort(b.branch, parseInt((e.target as HTMLInputElement).value))} />
-							</td>
+							<td><input type="number" value={b.port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateBranchPort(b.branch, parseInt((e.target as HTMLInputElement).value))} /></td>
 							<td>
 								{#if ver}
 									<code style="font-size:0.75rem">{ver}</code>
@@ -401,9 +242,6 @@
 								{/if}
 							</td>
 							<td class="flex gap-1" style="justify-content:flex-end">
-								{#if ver}
-									<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => viewContainerLogs(b.branch)}>Container Logs</button>
-								{/if}
 								<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deployBranch(b.branch)}>Deploy</button>
 								<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeBranch(b.branch)}>Remove</button>
 							</td>
@@ -416,21 +254,6 @@
 		{/if}
 	</div>
 
-	{#if containerLogOpen}
-		<div class="card mb-2" style="border:1px solid var(--info)">
-			<div class="flex justify-between items-center mb-1">
-				<strong class="text-sm">{containerLogTitle}</strong>
-				<div class="flex gap-1">
-					<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewContainerLogs(containerLogTitle.split('-').slice(1).join('-').split(' on ')[0])}>Refresh</button>
-					<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => containerLogOpen = false}>Close</button>
-				</div>
-			</div>
-			<div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;max-height:400px;overflow-y:auto;font-family:monospace;font-size:0.75rem;line-height:1.5;white-space:pre-wrap;word-break:break-all">
-				{containerLogLines.join('\n')}
-			</div>
-		</div>
-	{/if}
-
 	<!-- Blades -->
 	<div class="flex justify-between items-center mb-1">
 		<h2>Target Blades</h2>
@@ -442,14 +265,7 @@
 	{#if showBladeForm}
 		<div class="card mb-2">
 			<div class="flex gap-1 items-end">
-				<div style="flex:1">
-					<label class="text-sm text-muted">Blade</label>
-					<select bind:value={selectedBladeId}>
-						{#each availableBlades() as blade}
-							<option value={blade.id}>{blade.name}</option>
-						{/each}
-					</select>
-				</div>
+				<div style="flex:1"><select bind:value={selectedBladeId}>{#each availableBlades() as blade}<option value={blade.id}>{blade.name}</option>{/each}</select></div>
 				<button onclick={() => { if (selectedBladeId) addBlade(selectedBladeId); }} style="margin-bottom:1px">Add</button>
 			</div>
 		</div>
@@ -462,7 +278,7 @@
 				<tbody>
 					{#each project.blades as blade}
 						<tr>
-							<td>{blade.name}</td>
+							<td><a href="/blades/{blade.id}">{blade.name}</a></td>
 							<td class="text-sm text-muted">{blade.hostname}</td>
 							<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeBlade(blade.id)}>Remove</button></td>
 						</tr>
@@ -474,101 +290,53 @@
 		{/if}
 	</div>
 
-	<!-- Environment Variables -->
+	<!-- Environment Variables (collapsible) -->
 	<div class="flex justify-between items-center mb-1">
-		<h2>Environment Variables</h2>
-		<div class="flex gap-1">
-			<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => { showPasteForm = !showPasteForm; showVarForm = false; }}>
-				{showPasteForm ? 'Cancel' : 'Paste .env'}
-			</button>
-			<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => { showVarForm = !showVarForm; showPasteForm = false; }}>
-				{showVarForm ? 'Cancel' : '+ Variable'}
-			</button>
-		</div>
-	</div>
-
-	{#if showPasteForm}
-		<div class="card mb-2">
-			<div class="mb-1">
-				<label class="text-sm text-muted">Paste .env file content</label>
-				<textarea bind:value={pasteContent} rows="8" placeholder="KEY=value&#10;# comments ignored" style="font-family:monospace;font-size:0.8rem"></textarea>
+		<h2 style="cursor:pointer" onclick={() => envsOpen = !envsOpen}>
+			Environment Variables <span class="text-sm text-muted">({vars.length})</span>
+			<span style="font-size:0.75rem;margin-left:0.3rem">{envsOpen ? '▼' : '▶'}</span>
+		</h2>
+		{#if envsOpen}
+			<div class="flex gap-1">
+				<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => { showPasteForm = !showPasteForm; showVarForm = false; }}>
+					{showPasteForm ? 'Cancel' : 'Paste .env'}
+				</button>
+				<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => { showVarForm = !showVarForm; showPasteForm = false; }}>
+					{showVarForm ? 'Cancel' : '+ Variable'}
+				</button>
 			</div>
-			<div class="flex gap-1 items-end">
-				<div style="flex:1">
-					<label class="text-sm text-muted">Scope</label>
-					<select bind:value={pasteScope}>
-						<option value="global">Global</option>
-						{#each project.branches || [] as b}
-							<option value={b.branch}>{b.branch} only</option>
-						{/each}
-					</select>
-				</div>
-				<button onclick={importEnvFile}>Import</button>
-			</div>
-		</div>
-	{/if}
-
-	{#if showVarForm}
-		<div class="card mb-2">
-			<div class="grid grid-2 gap-2 mb-1">
-				<div>
-					<label class="text-sm text-muted">Key</label>
-					<input bind:value={varForm.key} placeholder="DATABASE_URL" />
-				</div>
-				<div>
-					<label class="text-sm text-muted">Value</label>
-					<input bind:value={varForm.value} placeholder="postgres://..." />
-				</div>
-			</div>
-			<div class="mb-1">
-				<label class="text-sm text-muted">Scope</label>
-				<select bind:value={varForm.scope}>
-					<option value="global">Global</option>
-					{#each project.branches || [] as b}
-						<option value={b.branch}>{b.branch} only</option>
-					{/each}
-				</select>
-			</div>
-			<button onclick={addVar}>Add</button>
-		</div>
-	{/if}
-
-	<div class="card mb-2">
-		<h3 class="mb-1" style="font-size:0.9rem">Global</h3>
-		<table>
-			<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
-			<tbody>
-				{#each globalVars() as v}
-					<tr>
-						<td><code>{v.key}</code></td>
-						<td style="max-width:200px">
-							{#if revealedVars.has(v.id)}
-								<code style="word-break:break-all">{v.value}</code>
-								<button class="secondary" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.3rem" onclick={() => { revealedVars.delete(v.id); revealedVars = new Set(revealedVars); }}>Hide</button>
-							{:else}
-								<code style="color:var(--text-muted)">••••••</code>
-								<button class="secondary" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.3rem" onclick={() => { revealedVars.add(v.id); revealedVars = new Set(revealedVars); }}>Show</button>
-							{/if}
-						</td>
-						<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeVar(v.id)}>x</button></td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-		{#if globalVars().length === 0}
-			<div class="text-muted text-sm" style="padding:0.75rem">No global variables</div>
 		{/if}
 	</div>
 
-	{#each project.branches || [] as b}
-		{@const bVars = branchVars(b.branch)}
-		{#if bVars.length > 0}
+	{#if envsOpen}
+		{#if showPasteForm}
 			<div class="card mb-2">
-				<h3 class="mb-1" style="font-size:0.9rem"><code>{b.branch}</code> overrides</h3>
+				<textarea bind:value={pasteContent} rows="6" placeholder="KEY=value&#10;# comments ignored" style="font-family:monospace;font-size:0.8rem;margin-bottom:0.5rem"></textarea>
+				<div class="flex gap-1 items-end">
+					<div style="flex:1"><select bind:value={pasteScope}><option value="global">Global</option>{#each project.branches || [] as b}<option value={b.branch}>{b.branch}</option>{/each}</select></div>
+					<button onclick={importEnvFile}>Import</button>
+				</div>
+			</div>
+		{/if}
+
+		{#if showVarForm}
+			<div class="card mb-2">
+				<div class="grid grid-2 gap-2 mb-1">
+					<div><input bind:value={varForm.key} placeholder="KEY" /></div>
+					<div><input bind:value={varForm.value} placeholder="value" /></div>
+				</div>
+				<div class="mb-1"><select bind:value={varForm.scope}><option value="global">Global</option>{#each project.branches || [] as b}<option value={b.branch}>{b.branch}</option>{/each}</select></div>
+				<button onclick={addVar}>Add</button>
+			</div>
+		{/if}
+
+		<div class="card mb-2">
+			<h3 class="mb-1" style="font-size:0.9rem">Global</h3>
+			{#if globalVars().length > 0}
 				<table>
 					<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
 					<tbody>
-						{#each bVars as v}
+						{#each globalVars() as v}
 							<tr>
 								<td><code>{v.key}</code></td>
 								<td style="max-width:200px">
@@ -585,44 +353,54 @@
 						{/each}
 					</tbody>
 				</table>
-			</div>
-		{/if}
-	{/each}
-
-	<!-- Log Viewer -->
-	{#if logOpen}
-		<div class="card mb-2" style="border:1px solid var(--primary)">
-			<div class="flex justify-between items-center mb-1">
-				<strong class="text-sm">{logTitle}</strong>
-				<div class="flex items-center gap-1">
-					{#if !logDone}
-						<span class="badge building">live</span>
-						<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={abortBuild}>Abort</button>
-					{:else}
-						<span class="badge online">done</span>
-					{/if}
-					<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={closeLog}>Close</button>
-				</div>
-			</div>
-			<div id="log-container" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;max-height:400px;overflow-y:auto;font-family:monospace;font-size:0.75rem;line-height:1.5;white-space:pre-wrap;word-break:break-all">
-				{logLines.join('\n')}
-			</div>
+			{:else}
+				<div class="text-muted text-sm" style="padding:0.5rem">No global variables</div>
+			{/if}
 		</div>
+
+		{#each project.branches || [] as b}
+			{@const bVars = branchVars(b.branch)}
+			{#if bVars.length > 0}
+				<div class="card mb-2">
+					<h3 class="mb-1" style="font-size:0.9rem"><code>{b.branch}</code> overrides</h3>
+					<table>
+						<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
+						<tbody>
+							{#each bVars as v}
+								<tr>
+									<td><code>{v.key}</code></td>
+									<td style="max-width:200px">
+										{#if revealedVars.has(v.id)}
+											<code style="word-break:break-all">{v.value}</code>
+											<button class="secondary" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.3rem" onclick={() => { revealedVars.delete(v.id); revealedVars = new Set(revealedVars); }}>Hide</button>
+										{:else}
+											<code style="color:var(--text-muted)">••••••</code>
+											<button class="secondary" style="font-size:0.6rem;padding:0.1rem 0.3rem;margin-left:0.3rem" onclick={() => { revealedVars.add(v.id); revealedVars = new Set(revealedVars); }}>Show</button>
+										{/if}
+									</td>
+									<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeVar(v.id)}>x</button></td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		{/each}
 	{/if}
 
-	<!-- Deploy History -->
+	<!-- Deploy History (paginated) -->
 	<h2 class="mb-1">Deploy History</h2>
 	<div class="card">
 		<table>
 			<thead><tr><th>Branch</th><th>Blade</th><th>Image</th><th>Status</th><th>Time</th><th></th></tr></thead>
 			<tbody>
-				{#each deploys as d}
+				{#each pagedDeploys() as d}
 					{@const isCurrent = d.id === currentDeployId(d.branch)}
 					<tr style={isCurrent ? 'background:rgba(74,222,128,0.05)' : ''}>
 						<td><code>{d.branch || '-'}</code></td>
-						<td>{d.blade_name}</td>
+						<td><a href="/blades/{d.blade_id}">{d.blade_name}</a></td>
 						<td>
-							<code>{d.image_tag}</code>
+							<a href="/deploys/{d.id}"><code>{d.image_tag}</code></a>
 							{#if isCurrent}
 								<span class="badge running" style="margin-left:0.3rem">current</span>
 							{/if}
@@ -630,15 +408,8 @@
 						<td><span class="badge {d.status}">{d.status}</span></td>
 						<td class="text-muted text-sm">{new Date(d.timestamp + 'Z').toLocaleString()}</td>
 						<td class="flex gap-1">
-							<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewLog(d)}>Logs</button>
 							{#if d.status === 'running' && !isCurrent}
-								<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => rollback(d)}>Rollback</button>
-							{/if}
-							{#if d.commit_sha}
-								<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => updateGithubStatus(d)}>GH Status</button>
-							{/if}
-							{#if !['building', 'pushing', 'deploying'].includes(d.status)}
-								<button style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => redeploy(d)}>Redeploy</button>
+								<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => { if (confirm('Rollback?')) api.rollback({ projectId, bladeId: d.blade_id, imageTag: d.image_tag }).then(() => api.deploys.byProject(projectId).then(dd => deploys = dd)); }}>Rollback</button>
 							{/if}
 						</td>
 					</tr>
@@ -647,6 +418,16 @@
 		</table>
 		{#if deploys.length === 0}
 			<div class="text-muted" style="padding:0.75rem">No deploys yet</div>
+		{/if}
+		{#if deployTotalPages() > 1}
+			<div class="flex justify-between items-center" style="padding:0.75rem">
+				<span class="text-sm text-muted">{deploys.length} deploys</span>
+				<div class="flex gap-1 items-center">
+					<button class="secondary" style="font-size:0.75rem;padding:0.25rem 0.5rem" disabled={deployPage <= 1} onclick={() => deployPage--}>Prev</button>
+					<span class="text-sm">{deployPage} / {deployTotalPages()}</span>
+					<button class="secondary" style="font-size:0.75rem;padding:0.25rem 0.5rem" disabled={deployPage >= deployTotalPages()} onclick={() => deployPage++}>Next</button>
+				</div>
+			</div>
 		{/if}
 	</div>
 {:else}

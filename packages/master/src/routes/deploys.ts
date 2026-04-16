@@ -18,6 +18,21 @@ export async function handleDeployRoutes(req: Request, path: string): Promise<Re
     return Response.json(deploys);
   }
 
+  if (req.method === "GET" && path.match(/^\/api\/deploys\/\d+$/) && !path.includes("project")) {
+    const id = parseInt(path.split("/").pop()!);
+    const deploy = db.query(`
+      SELECT d.*, p.name as project_name, p.container_port, b.name as blade_name, b.hostname as blade_hostname, b.id as blade_id,
+             r.url as repo_url
+      FROM deploys d
+      JOIN projects p ON p.id = d.project_id
+      JOIN blades b ON b.id = d.blade_id
+      JOIN repos r ON r.id = p.repo_id
+      WHERE d.id = ?
+    `).get(id);
+    if (!deploy) return Response.json({ error: "not found" }, { status: 404 });
+    return Response.json(deploy);
+  }
+
   if (req.method === "GET" && path.match(/^\/api\/deploys\/project\/\d+$/)) {
     const projectId = parseInt(path.split("/").pop()!);
     const deploys = db.query(`
