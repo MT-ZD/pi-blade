@@ -11,6 +11,7 @@ import { handleConfigRoutes } from "./routes/config.ts";
 import { startPoller } from "./services/git-poller.ts";
 import { startMonitor } from "./services/monitor.ts";
 import { startUpdater } from "./services/updater.ts";
+import { startCleanup } from "./services/cleanup.ts";
 import { checkAuth, verifyPassword, createSession, destroySession, isAuthEnabled, setPassword } from "./auth.ts";
 
 const handlers = [
@@ -87,3 +88,4 @@ console.log(`Pi-Blade master running on port ${MASTER_PORT}`);
 startPoller();
 startMonitor();
 startUpdater();
+startCleanup();
