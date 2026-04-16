@@ -407,9 +407,7 @@
 				</div>
 			</div>
 			<div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;max-height:400px;overflow-y:auto;font-family:monospace;font-size:0.75rem;line-height:1.5;white-space:pre-wrap;word-break:break-all">
-				{#each containerLogLines as line}
-					{line}
-{/each}
+				{containerLogLines.join('\n')}
 			</div>
 		</div>
 	{/if}
@@ -575,9 +573,7 @@
 				</div>
 			</div>
 			<div id="log-container" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;max-height:400px;overflow-y:auto;font-family:monospace;font-size:0.75rem;line-height:1.5;white-space:pre-wrap;word-break:break-all">
-				{#each logLines as line}
-					{line}
-{/each}
+				{logLines.join('\n')}
 			</div>
 		</div>
 	{/if}
