@@ -9,7 +9,8 @@
     "start": "ORIGIN=http://piblade-master.local:5173 node build"
   },
   "dependencies": {
-    "@pi-blade/shared": "workspace:*"
+    "@pi-blade/shared": "workspace:*",
+    "chart.js": "^4.5.1"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.2.0",

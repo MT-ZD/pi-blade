@@ -100,6 +100,18 @@ function migrate(db: Database) {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS metrics_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      blade_id INTEGER NOT NULL REFERENCES blades(id) ON DELETE CASCADE,
+      cpu_percent REAL NOT NULL,
+      memory_percent REAL NOT NULL,
+      disk_percent REAL NOT NULL,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_metrics_history_blade_time
+      ON metrics_history (blade_id, timestamp);
   `);
 
   try {

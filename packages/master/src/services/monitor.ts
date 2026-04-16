@@ -29,6 +29,12 @@ async function checkBlade(blade: any) {
     const metrics = (await res.json()) as BladeMetrics;
     latestMetrics.set(blade.id, metrics);
 
+    // Store historical snapshot
+    getDb().query(`
+      INSERT INTO metrics_history (blade_id, cpu_percent, memory_percent, disk_percent)
+      VALUES (?, ?, ?, ?)
+    `).run(blade.id, metrics.cpuPercent, metrics.memoryPercent, metrics.diskPercent);
+
     try {
       const vRes = await fetch(`http://${blade.hostname}:${BLADE_AGENT_PORT}/version`, {
         signal: AbortSignal.timeout(5_000),
@@ -80,10 +86,18 @@ async function checkBlade(blade: any) {
 export function startMonitor() {
   console.log("[monitor] Started");
 
+  let pruneCounter = 0;
+
   const check = async () => {
     const db = getDb();
     const blades = db.query("SELECT * FROM blades").all() as any[];
     await Promise.all(blades.map(checkBlade));
+
+    // Prune metrics older than 7 days every ~60 checks (~30 min)
+    if (++pruneCounter >= 60) {
+      pruneCounter = 0;
+      db.query("DELETE FROM metrics_history WHERE timestamp < datetime('now', '-7 days')").run();
+    }
   };
 
   check();

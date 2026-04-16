@@ -86,7 +86,9 @@ export const api = {
 		clearAll: () => request('/alerts', { method: 'DELETE' })
 	},
 	metrics: {
-		all: () => request<Record<string, any>>('/metrics')
+		all: () => request<Record<string, any>>('/metrics'),
+		history: (bladeId: number, hours = 168) =>
+			request<any[]>('/blades/' + bladeId + '/metrics-history?hours=' + hours)
 	},
 	rollback: (data: { projectId: number; bladeId: number; imageTag: string }) =>
 		request('/rollback', { method: 'POST', body: JSON.stringify(data) }),

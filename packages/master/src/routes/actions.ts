@@ -46,6 +46,19 @@ export async function handleActionRoutes(req: Request, path: string): Promise<Re
     }
   }
 
+  if (req.method === "GET" && path.match(/^\/api\/blades\/\d+\/metrics-history$/)) {
+    const bladeId = parseInt(path.split("/")[3]);
+    const url = new URL(req.url);
+    const hours = parseInt(url.searchParams.get("hours") || "168"); // default 7 days
+    const rows = db.query(`
+      SELECT cpu_percent, memory_percent, disk_percent, timestamp
+      FROM metrics_history
+      WHERE blade_id = ? AND timestamp >= datetime('now', '-' || ? || ' hours')
+      ORDER BY timestamp ASC
+    `).all(bladeId, hours);
+    return Response.json(rows);
+  }
+
   if (req.method === "GET" && path === "/api/metrics") {
     const metrics = getLatestMetrics();
     const versions = getBladeVersions();
