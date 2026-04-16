@@ -129,6 +129,7 @@
 		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
+		z-index: 100;
 	}
 
 	.logo {
@@ -158,5 +159,7 @@
 		margin-left: 220px;
 		padding: 2rem;
 		flex: 1;
+		position: relative;
+		z-index: 50;
 	}
 </style>
