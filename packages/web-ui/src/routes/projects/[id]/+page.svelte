@@ -189,6 +189,7 @@
 		// Fall back to stored log
 		closeLog();
 		logTitle = `${project.name} @ ${branch || '?'} (${imageTag})`;
+		logImageTag = imageTag;
 		logOpen = true;
 
 		const inProgress = ['building', 'pushing', 'deploying'].includes(status);
@@ -219,6 +220,8 @@
 			method: 'POST',
 			headers: token ? { 'Authorization': `Bearer ${token}` } : {}
 		});
+		logDone = true;
+		deploys = await api.deploys.byProject(projectId);
 	}
 
 	function closeLog() {

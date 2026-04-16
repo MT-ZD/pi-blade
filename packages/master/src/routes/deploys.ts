@@ -36,7 +36,16 @@ export async function handleDeployRoutes(req: Request, path: string): Promise<Re
     const imageTag = decodeURIComponent(parts[4]);
     const key = logKey(projectName, imageTag);
     const ok = abortBuild(key);
-    return Response.json({ ok });
+
+    // Fallback: if no live build found, mark stuck deploys as aborted in DB
+    if (!ok) {
+      db.query(`
+        UPDATE deploys SET status = 'aborted', log = 'Aborted (no live build found — build may have been running on old code)'
+        WHERE image_tag = ? AND status IN ('building', 'pushing', 'deploying')
+      `).run(imageTag);
+    }
+
+    return Response.json({ ok: true });
   }
 
   // GET /api/builds/active — list active/recent build logs
