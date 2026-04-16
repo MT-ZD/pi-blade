@@ -100,7 +100,7 @@
 <div class="card">
 	<table>
 		<thead>
-			<tr><th>Name</th><th>Repo</th><th>Path</th><th>Env</th><th></th></tr>
+			<tr><th>Name</th><th>Repo</th><th>Path</th><th>Active Env</th><th></th></tr>
 		</thead>
 		<tbody>
 			{#each projects as project}
@@ -108,7 +108,7 @@
 					<td><a href="/projects/{project.id}">{project.name}</a></td>
 					<td class="text-sm">{project.repo_url}</td>
 					<td>{project.path}</td>
-					<td>{project.env_group_name || '-'}</td>
+					<td>{project.active_environment}</td>
 					<td class="flex gap-1">
 						<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deploy(project.id)}>Deploy</button>
 						<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeProject(project.id)}>Delete</button>

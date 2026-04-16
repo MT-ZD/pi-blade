@@ -75,10 +75,15 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string)
     `).run(imageTag, project.id);
 
     let envVars: Record<string, string> = {};
-    if (project.env_group_id) {
+    const projEnv = db.query(`
+      SELECT pe.id FROM project_environments pe
+      JOIN projects p ON p.id = ?1
+      WHERE pe.project_id = ?1 AND pe.environment = p.active_environment
+    `).get(project.id) as any;
+    if (projEnv) {
       const vars = db.query(
-        "SELECT key, value FROM env_vars WHERE env_group_id = ?"
-      ).all(project.env_group_id) as any[];
+        "SELECT key, value FROM project_env_vars WHERE project_env_id = ?"
+      ).all(projEnv.id) as any[];
       envVars = Object.fromEntries(vars.map((v: any) => [v.key, v.value]));
     }
 

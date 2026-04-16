@@ -49,20 +49,28 @@ export const api = {
 			}),
 		removeUpstream: (id: number) => request('/upstreams/' + id, { method: 'DELETE' })
 	},
-	envGroups: {
-		list: () => request<any[]>('/env-groups'),
-		get: (id: number) => request<any>('/env-groups/' + id),
-		create: (data: any) =>
-			request('/env-groups', { method: 'POST', body: JSON.stringify(data) }),
-		remove: (id: number) => request('/env-groups/' + id, { method: 'DELETE' }),
-		addVar: (groupId: number, data: any) =>
-			request('/env-groups/' + groupId + '/vars', {
+	environments: {
+		list: (projectId: number) => request<any[]>('/projects/' + projectId + '/environments'),
+		get: (id: number) => request<any>('/environments/' + id),
+		create: (projectId: number, environment: string) =>
+			request('/projects/' + projectId + '/environments', {
+				method: 'POST',
+				body: JSON.stringify({ environment })
+			}),
+		remove: (id: number) => request('/environments/' + id, { method: 'DELETE' }),
+		addVar: (envId: number, data: any) =>
+			request('/environments/' + envId + '/vars', {
 				method: 'POST',
 				body: JSON.stringify(data)
 			}),
 		updateVar: (id: number, data: any) =>
 			request('/env-vars/' + id, { method: 'PUT', body: JSON.stringify(data) }),
-		removeVar: (id: number) => request('/env-vars/' + id, { method: 'DELETE' })
+		removeVar: (id: number) => request('/env-vars/' + id, { method: 'DELETE' }),
+		setActive: (projectId: number, environment: string) =>
+			request('/projects/' + projectId + '/active-environment', {
+				method: 'PUT',
+				body: JSON.stringify({ environment })
+			})
 	},
 	deploys: {
 		list: () => request<any[]>('/deploys'),

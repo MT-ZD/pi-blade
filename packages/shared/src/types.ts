@@ -20,7 +20,7 @@ export interface Project {
   name: string;
   path: string;
   dockerfilePath: string;
-  envGroupId: number | null;
+  activeEnvironment: string;
 }
 
 export interface Deploy {
@@ -48,15 +48,15 @@ export interface Upstream {
   weight: number;
 }
 
-export interface EnvGroup {
+export interface ProjectEnvironment {
   id: number;
-  name: string;
+  projectId: number;
   environment: string;
 }
 
-export interface EnvVar {
+export interface ProjectEnvVar {
   id: number;
-  envGroupId: number;
+  projectEnvId: number;
   key: string;
   value: string;
 }

@@ -32,19 +32,27 @@ function migrate(db: Database) {
       is_monorepo INTEGER NOT NULL DEFAULT 0
     );
 
-    CREATE TABLE IF NOT EXISTS env_groups (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      environment TEXT NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
       name TEXT UNIQUE NOT NULL,
       path TEXT NOT NULL DEFAULT '.',
       dockerfile_path TEXT NOT NULL DEFAULT 'Dockerfile',
-      env_group_id INTEGER REFERENCES env_groups(id) ON DELETE SET NULL
+      active_environment TEXT NOT NULL DEFAULT 'production'
+    );
+
+    CREATE TABLE IF NOT EXISTS project_environments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      environment TEXT NOT NULL,
+      UNIQUE(project_id, environment)
+    );
+
+    CREATE TABLE IF NOT EXISTS project_env_vars (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_env_id INTEGER NOT NULL REFERENCES project_environments(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS project_blades (
@@ -79,13 +87,6 @@ function migrate(db: Database) {
       weight INTEGER NOT NULL DEFAULT 1
     );
 
-    CREATE TABLE IF NOT EXISTS env_vars (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      env_group_id INTEGER NOT NULL REFERENCES env_groups(id) ON DELETE CASCADE,
-      key TEXT NOT NULL,
-      value TEXT NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS alerts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       type TEXT NOT NULL,
@@ -103,5 +104,9 @@ function migrate(db: Database) {
 
   try {
     db.exec("ALTER TABLE repos ADD COLUMN ssh_key TEXT");
+  } catch (_) {}
+
+  try {
+    db.exec("ALTER TABLE projects ADD COLUMN active_environment TEXT NOT NULL DEFAULT 'production'");
   } catch (_) {}
 }

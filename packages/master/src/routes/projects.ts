@@ -5,11 +5,9 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
 
   if (req.method === "GET" && path === "/api/projects") {
     const projects = db.query(`
-      SELECT p.*, r.url as repo_url, r.branch as repo_branch,
-             eg.name as env_group_name, eg.environment as env_group_environment
+      SELECT p.*, r.url as repo_url, r.branch as repo_branch
       FROM projects p
       JOIN repos r ON r.id = p.repo_id
-      LEFT JOIN env_groups eg ON eg.id = p.env_group_id
       ORDER BY p.name
     `).all();
     return Response.json(projects);
@@ -40,19 +38,17 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
       name: string;
       path?: string;
       dockerfilePath?: string;
-      envGroupId?: number;
       blades?: { bladeId: number; port: number }[];
     };
 
     const result = db.query(`
-      INSERT INTO projects (repo_id, name, path, dockerfile_path, env_group_id)
-      VALUES (?1, ?2, ?3, ?4, ?5)
+      INSERT INTO projects (repo_id, name, path, dockerfile_path)
+      VALUES (?1, ?2, ?3, ?4)
     `).run(
       body.repoId,
       body.name,
       body.path || ".",
       body.dockerfilePath || "Dockerfile",
-      body.envGroupId || null,
     );
 
     const projectId = result.lastInsertRowid;

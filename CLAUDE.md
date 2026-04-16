@@ -42,19 +42,21 @@ pi-blade/
 - **Blade**: a Raspberry Pi running the blade-agent, registered with master
 - **Project**: a deployable unit within a repo (supports monorepos via path config)
 - **Upstream**: a route's set of blade:port targets for nginx load balancing
-- **Env group**: named set of environment variables (prod/staging/dev) assigned per project
+- **Environment**: per-project env var set (production/staging/development), one active at deploy time
 
 ## Data Model
 
-Core tables: blades, repos, projects, deploys, routes, upstreams, env_groups, env_vars (encrypted), alerts
+Core tables: blades, repos (with optional encrypted ssh_key), projects (with active_environment), project_environments, project_env_vars, deploys, routes, upstreams, alerts, settings
 
 ## Blade Agent API
 
 - `POST /deploy` — pull image from master registry, stop old container, start new
 - `POST /rollback` — revert to previous image tag
-- `GET /status` — running containers and health
+- `POST /update` — git pull + bun install + self-restart
+- `GET /status` — running containers, health, version
+- `GET /version` — current git SHA
 - `GET /metrics` — CPU, RAM, disk, per-container stats
-- `POST /register` — initial handshake with master
+- `POST /register` — initial handshake with master (includes version)
 
 ## Conventions
 
