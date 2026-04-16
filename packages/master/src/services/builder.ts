@@ -74,7 +74,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
   const db = getDb();
   const deployBranch = branch || "main";
   const imageTag = commitSha.slice(0, 12);
-  const imageName = `${REGISTRY}/${project.name}:${imageTag}`;
+  const imageName = `${REGISTRY}/${project.name.toLowerCase()}:${imageTag}`;
   const cloneDir = `/tmp/pi-blade-build/${project.name}-${imageTag}`;
   const key = logKey(project.name, imageTag);
 

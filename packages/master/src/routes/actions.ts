@@ -2,6 +2,7 @@ import { getDb } from "../db.ts";
 import { buildAndDeploy, triggerRollback } from "../services/builder.ts";
 import { regenerateNginxConfig } from "../services/nginx.ts";
 import { getLatestMetrics, getBladeVersions } from "../services/monitor.ts";
+import { sshEnvForRepo, cleanupSshKey } from "../lib/ssh.ts";
 
 export async function handleActionRoutes(req: Request, path: string): Promise<Response | null> {
   const db = getDb();
@@ -21,7 +22,21 @@ export async function handleActionRoutes(req: Request, path: string): Promise<Re
     const branch = body.branch;
     if (!branch) return Response.json({ error: "branch required" }, { status: 400 });
 
-    const commitSha = body.commitSha || "HEAD";
+    let commitSha = body.commitSha;
+    if (!commitSha || commitSha === "HEAD") {
+      // Resolve HEAD to actual SHA
+      const sshEnv = sshEnvForRepo(repo);
+      try {
+        const proc = Bun.spawn(["git", "ls-remote", repo.url, `refs/heads/${branch}`], {
+          stdout: "pipe", stderr: "pipe",
+          env: sshEnv ? { ...process.env, ...sshEnv } : undefined,
+        });
+        const output = await new Response(proc.stdout).text();
+        commitSha = output.split("\t")[0] || `${Date.now()}`;
+      } finally {
+        cleanupSshKey(repo.id);
+      }
+    }
     buildAndDeploy(project, repo, commitSha, branch);
     return Response.json({ ok: true, message: "build started" });
   }
