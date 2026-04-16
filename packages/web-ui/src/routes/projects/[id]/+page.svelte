@@ -21,7 +21,7 @@
 	let newBranchPort = $state(8080);
 
 	let editing = $state(false);
-	let editForm = $state({ name: '', path: '', dockerfilePath: '', containerPort: 3000 });
+	let editForm = $state({ name: '', path: '', dockerfilePath: '', containerPort: 3000, buildContext: '' });
 
 	let logLines = $state<string[]>([]);
 	let logTitle = $state('');
@@ -128,7 +128,7 @@
 	// Edit
 	function startEdit() {
 		editing = true;
-		editForm = { name: project.name, path: project.path, dockerfilePath: project.dockerfile_path, containerPort: project.container_port || 3000 };
+		editForm = { name: project.name, path: project.path, dockerfilePath: project.dockerfile_path, containerPort: project.container_port || 3000, buildContext: project.build_context || '' };
 	}
 
 	async function saveEdit() {
@@ -325,6 +325,10 @@
 					<input type="number" bind:value={editForm.containerPort} />
 				</div>
 			</div>
+			<div class="mb-1">
+				<label class="text-sm text-muted">Build Context <span style="font-weight:normal">(relative to repo root, empty = same as project path)</span></label>
+				<input bind:value={editForm.buildContext} placeholder="e.g. . for repo root" />
+			</div>
 			<div class="flex gap-1">
 				<button onclick={saveEdit}>Save</button>
 				<button class="secondary" onclick={() => editing = false}>Cancel</button>
@@ -337,6 +341,7 @@
 				<div><span class="text-muted">Path:</span> {project.path}</div>
 				<div><span class="text-muted">Dockerfile:</span> {project.dockerfile_path}</div>
 				<div><span class="text-muted">Container Port:</span> {project.container_port || 3000}</div>
+				<div><span class="text-muted">Build Context:</span> {project.build_context || project.path}</div>
 			</div>
 		</div>
 	{/if}

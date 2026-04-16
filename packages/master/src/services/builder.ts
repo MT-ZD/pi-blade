@@ -140,8 +140,10 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
     appendLog(key, `Cloning ${repo.url} branch ${deployBranch}...`);
     await runCmdWithLog(["git", "clone", "--depth", "1", "--branch", deployBranch, repo.url, cloneDir], key, signal, { env: sshEnv });
 
-    const buildContext = `${cloneDir}/${project.path}`;
-    const dockerfilePath = `${buildContext}/${project.dockerfile_path}`;
+    const buildContext = project.build_context
+      ? `${cloneDir}/${project.build_context}`
+      : `${cloneDir}/${project.path}`;
+    const dockerfilePath = `${cloneDir}/${project.path}/${project.dockerfile_path}`;
 
     appendLog(key, `Building image ${imageName}...`);
     await runCmdWithLog(["docker", "build", "-t", imageName, "-f", dockerfilePath, buildContext], key, signal);

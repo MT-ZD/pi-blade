@@ -49,19 +49,21 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
       path?: string;
       dockerfilePath?: string;
       containerPort?: number;
+      buildContext?: string;
       branches?: { branch: string; port: number }[];
       bladeIds?: number[];
     };
 
     const result = db.query(`
-      INSERT INTO projects (repo_id, name, path, dockerfile_path, container_port)
-      VALUES (?1, ?2, ?3, ?4, ?5)
+      INSERT INTO projects (repo_id, name, path, dockerfile_path, container_port, build_context)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
     `).run(
       body.repoId,
       body.name,
       body.path || ".",
       body.dockerfilePath || "Dockerfile",
       body.containerPort || 3000,
+      body.buildContext || null,
     );
 
     const projectId = result.lastInsertRowid;
@@ -94,18 +96,20 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
       path?: string;
       dockerfilePath?: string;
       containerPort?: number;
+      buildContext?: string | null;
     };
     const existing = db.query("SELECT * FROM projects WHERE id = ?").get(id) as any;
     if (!existing) return Response.json({ error: "not found" }, { status: 404 });
 
     db.query(`
-      UPDATE projects SET name = ?1, path = ?2, dockerfile_path = ?3, container_port = ?4
-      WHERE id = ?5
+      UPDATE projects SET name = ?1, path = ?2, dockerfile_path = ?3, container_port = ?4, build_context = ?5
+      WHERE id = ?6
     `).run(
       body.name ?? existing.name,
       body.path ?? existing.path,
       body.dockerfilePath ?? existing.dockerfile_path,
       body.containerPort ?? existing.container_port,
+      body.buildContext !== undefined ? (body.buildContext || null) : existing.build_context,
       id,
     );
     return Response.json({ ok: true });

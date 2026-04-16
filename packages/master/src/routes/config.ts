@@ -43,6 +43,7 @@ function exportConfig(): ConfigV1 {
         path: p.path,
         dockerfile_path: p.dockerfile_path,
         container_port: p.container_port || 3000,
+        build_context: p.build_context || null,
         branches: db.query("SELECT branch, port FROM project_branches WHERE project_id = ?").all(p.id) as any[],
         vars: db.query("SELECT key, value, scope FROM project_vars WHERE project_id = ? ORDER BY scope, key").all(p.id) as any[],
         blade_names: (db.query(`
@@ -216,15 +217,15 @@ function applyConfig(config: any, conflictStrategy: string): { ok: boolean; erro
         if (existingProj && conflictStrategy === "skip") {
           projectId = existingProj.id;
         } else if (existingProj && conflictStrategy === "overwrite") {
-          db.query("UPDATE projects SET repo_id = ?, path = ?, dockerfile_path = ?, container_port = ? WHERE id = ?")
-            .run(repoId, proj.path || ".", proj.dockerfile_path || "Dockerfile", proj.container_port || 3000, existingProj.id);
+          db.query("UPDATE projects SET repo_id = ?, path = ?, dockerfile_path = ?, container_port = ?, build_context = ? WHERE id = ?")
+            .run(repoId, proj.path || ".", proj.dockerfile_path || "Dockerfile", proj.container_port || 3000, proj.build_context || null, existingProj.id);
           db.query("DELETE FROM project_branches WHERE project_id = ?").run(existingProj.id);
           db.query("DELETE FROM project_vars WHERE project_id = ?").run(existingProj.id);
           db.query("DELETE FROM project_blades WHERE project_id = ?").run(existingProj.id);
           projectId = existingProj.id;
         } else {
-          const result = db.query("INSERT INTO projects (repo_id, name, path, dockerfile_path, container_port) VALUES (?, ?, ?, ?, ?)")
-            .run(repoId, proj.name, proj.path || ".", proj.dockerfile_path || "Dockerfile", proj.container_port || 3000);
+          const result = db.query("INSERT INTO projects (repo_id, name, path, dockerfile_path, container_port, build_context) VALUES (?, ?, ?, ?, ?, ?)")
+            .run(repoId, proj.name, proj.path || ".", proj.dockerfile_path || "Dockerfile", proj.container_port || 3000, proj.build_context || null);
           projectId = Number(result.lastInsertRowid);
         }
 

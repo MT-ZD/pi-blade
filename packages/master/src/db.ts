@@ -37,7 +37,8 @@ function migrate(db: Database) {
       name TEXT UNIQUE NOT NULL,
       path TEXT NOT NULL DEFAULT '.',
       dockerfile_path TEXT NOT NULL DEFAULT 'Dockerfile',
-      container_port INTEGER NOT NULL DEFAULT 3000
+      container_port INTEGER NOT NULL DEFAULT 3000,
+      build_context TEXT
     );
 
     CREATE TABLE IF NOT EXISTS project_branches (
@@ -133,6 +134,10 @@ function migrate(db: Database) {
 
   try {
     db.exec("ALTER TABLE project_branches ADD COLUMN port INTEGER NOT NULL DEFAULT 8080");
+  } catch (_) {}
+
+  try {
+    db.exec("ALTER TABLE projects ADD COLUMN build_context TEXT");
   } catch (_) {}
 
   // Migrate project_blades: remove port column if it exists (old schema)
