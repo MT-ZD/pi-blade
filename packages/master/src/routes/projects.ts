@@ -91,6 +91,39 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
     return Response.json({ ok: true });
   }
 
+  // POST /api/projects/:id/blades — add blade to project
+  if (req.method === "POST" && path.match(/^\/api\/projects\/\d+\/blades$/)) {
+    const projectId = parseInt(path.split("/")[3]);
+    const body = await req.json() as { bladeId: number; port: number };
+    db.query(
+      "INSERT OR REPLACE INTO project_blades (project_id, blade_id, port) VALUES (?1, ?2, ?3)"
+    ).run(projectId, body.bladeId, body.port);
+    return Response.json({ ok: true });
+  }
+
+  // PUT /api/projects/:id/blades/:bladeId — update port
+  if (req.method === "PUT" && path.match(/^\/api\/projects\/\d+\/blades\/\d+$/)) {
+    const parts = path.split("/");
+    const projectId = parseInt(parts[3]);
+    const bladeId = parseInt(parts[5]);
+    const body = await req.json() as { port: number };
+    db.query(
+      "UPDATE project_blades SET port = ? WHERE project_id = ? AND blade_id = ?"
+    ).run(body.port, projectId, bladeId);
+    return Response.json({ ok: true });
+  }
+
+  // DELETE /api/projects/:id/blades/:bladeId
+  if (req.method === "DELETE" && path.match(/^\/api\/projects\/\d+\/blades\/\d+$/)) {
+    const parts = path.split("/");
+    const projectId = parseInt(parts[3]);
+    const bladeId = parseInt(parts[5]);
+    db.query(
+      "DELETE FROM project_blades WHERE project_id = ? AND blade_id = ?"
+    ).run(projectId, bladeId);
+    return Response.json({ ok: true });
+  }
+
   if (req.method === "DELETE" && path.match(/^\/api\/projects\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
     db.query("DELETE FROM projects WHERE id = ?").run(id);

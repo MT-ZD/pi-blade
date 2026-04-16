@@ -9,7 +9,6 @@
 		{ href: '/repos', label: 'Repos' },
 		{ href: '/projects', label: 'Projects' },
 		{ href: '/routing', label: 'Routing' },
-		{ href: '/envs', label: 'Environments' },
 		{ href: '/deploys', label: 'Deploys' },
 		{ href: '/alerts', label: 'Alerts' },
 		{ href: '/settings', label: 'Settings' }
