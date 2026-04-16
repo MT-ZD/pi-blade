@@ -11,11 +11,10 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
       ORDER BY p.name
     `).all() as any[];
 
-    // Attach branches to each project
     for (const p of projects) {
       p.branches = db.query(
-        "SELECT branch FROM project_branches WHERE project_id = ? ORDER BY branch"
-      ).all(p.id).map((r: any) => r.branch);
+        "SELECT branch, port FROM project_branches WHERE project_id = ? ORDER BY branch"
+      ).all(p.id);
     }
     return Response.json(projects);
   }
@@ -31,11 +30,11 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
     if (!project) return Response.json({ error: "not found" }, { status: 404 });
 
     project.branches = db.query(
-      "SELECT branch FROM project_branches WHERE project_id = ? ORDER BY branch"
-    ).all(id).map((r: any) => r.branch);
+      "SELECT branch, port FROM project_branches WHERE project_id = ? ORDER BY branch"
+    ).all(id);
 
     project.blades = db.query(`
-      SELECT b.*, pb.port FROM project_blades pb
+      SELECT b.* FROM project_blades pb
       JOIN blades b ON b.id = pb.blade_id
       WHERE pb.project_id = ?
     `).all(id);
@@ -49,37 +48,39 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
       name: string;
       path?: string;
       dockerfilePath?: string;
-      branches?: string[];
-      blades?: { bladeId: number; port: number }[];
+      containerPort?: number;
+      branches?: { branch: string; port: number }[];
+      bladeIds?: number[];
     };
 
     const result = db.query(`
-      INSERT INTO projects (repo_id, name, path, dockerfile_path)
-      VALUES (?1, ?2, ?3, ?4)
+      INSERT INTO projects (repo_id, name, path, dockerfile_path, container_port)
+      VALUES (?1, ?2, ?3, ?4, ?5)
     `).run(
       body.repoId,
       body.name,
       body.path || ".",
       body.dockerfilePath || "Dockerfile",
+      body.containerPort || 3000,
     );
 
     const projectId = result.lastInsertRowid;
 
     if (body.branches) {
       const stmt = db.query(
-        "INSERT INTO project_branches (project_id, branch) VALUES (?1, ?2)"
+        "INSERT INTO project_branches (project_id, branch, port) VALUES (?1, ?2, ?3)"
       );
       for (const b of body.branches) {
-        stmt.run(projectId, b);
+        stmt.run(projectId, b.branch, b.port);
       }
     }
 
-    if (body.blades) {
+    if (body.bladeIds) {
       const stmt = db.query(
-        "INSERT INTO project_blades (project_id, blade_id, port) VALUES (?1, ?2, ?3)"
+        "INSERT INTO project_blades (project_id, blade_id) VALUES (?1, ?2)"
       );
-      for (const b of body.blades) {
-        stmt.run(projectId, b.bladeId, b.port);
+      for (const id of body.bladeIds) {
+        stmt.run(projectId, id);
       }
     }
 
@@ -92,29 +93,43 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
       name?: string;
       path?: string;
       dockerfilePath?: string;
+      containerPort?: number;
     };
     const existing = db.query("SELECT * FROM projects WHERE id = ?").get(id) as any;
     if (!existing) return Response.json({ error: "not found" }, { status: 404 });
 
     db.query(`
-      UPDATE projects SET name = ?1, path = ?2, dockerfile_path = ?3
-      WHERE id = ?4
+      UPDATE projects SET name = ?1, path = ?2, dockerfile_path = ?3, container_port = ?4
+      WHERE id = ?5
     `).run(
       body.name ?? existing.name,
       body.path ?? existing.path,
       body.dockerfilePath ?? existing.dockerfile_path,
+      body.containerPort ?? existing.container_port,
       id,
     );
     return Response.json({ ok: true });
   }
 
-  // POST /api/projects/:id/branches — add branch
+  // POST /api/projects/:id/branches — add branch with port
   if (req.method === "POST" && path.match(/^\/api\/projects\/\d+\/branches$/)) {
     const projectId = parseInt(path.split("/")[3]);
-    const body = await req.json() as { branch: string };
+    const body = await req.json() as { branch: string; port: number };
     db.query(
-      "INSERT OR IGNORE INTO project_branches (project_id, branch) VALUES (?1, ?2)"
-    ).run(projectId, body.branch);
+      "INSERT OR IGNORE INTO project_branches (project_id, branch, port) VALUES (?1, ?2, ?3)"
+    ).run(projectId, body.branch, body.port || 8080);
+    return Response.json({ ok: true });
+  }
+
+  // PUT /api/projects/:id/branches/:branch — update branch port
+  if (req.method === "PUT" && path.match(/^\/api\/projects\/\d+\/branches\/.+$/)) {
+    const parts = path.split("/");
+    const projectId = parseInt(parts[3]);
+    const branch = decodeURIComponent(parts[5]);
+    const body = await req.json() as { port: number };
+    db.query(
+      "UPDATE project_branches SET port = ? WHERE project_id = ? AND branch = ?"
+    ).run(body.port, projectId, branch);
     return Response.json({ ok: true });
   }
 
@@ -129,13 +144,13 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
     return Response.json({ ok: true });
   }
 
-  // POST /api/projects/:id/blades
+  // POST /api/projects/:id/blades — add blade
   if (req.method === "POST" && path.match(/^\/api\/projects\/\d+\/blades$/)) {
     const projectId = parseInt(path.split("/")[3]);
-    const body = await req.json() as { bladeId: number; port: number };
+    const body = await req.json() as { bladeId: number };
     db.query(
-      "INSERT OR REPLACE INTO project_blades (project_id, blade_id, port) VALUES (?1, ?2, ?3)"
-    ).run(projectId, body.bladeId, body.port);
+      "INSERT OR IGNORE INTO project_blades (project_id, blade_id) VALUES (?1, ?2)"
+    ).run(projectId, body.bladeId);
     return Response.json({ ok: true });
   }
 

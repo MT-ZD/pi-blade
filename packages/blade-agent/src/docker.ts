@@ -25,15 +25,17 @@ export async function startContainer(opts: {
   tag: string;
   registry: string;
   port: number;
+  containerPort?: number;
   envVars: Record<string, string>;
 }): Promise<string> {
-  const fullImage = `${opts.registry}/${opts.name}:${opts.tag}`;
+  const fullImage = `${opts.registry}/${opts.image}:${opts.tag}`;
+  const cPort = opts.containerPort || opts.port;
   const args: string[] = [
     "run",
     "-d",
     "--name", opts.name,
     "--restart", "unless-stopped",
-    "-p", `${opts.port}:${opts.port}`,
+    "-p", `${opts.port}:${cPort}`,
   ];
 
   for (const [key, value] of Object.entries(opts.envVars)) {

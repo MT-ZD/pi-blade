@@ -6,7 +6,7 @@
 	let repos = $state<any[]>([]);
 	let blades = $state<any[]>([]);
 	let showForm = $state(false);
-	let form = $state({ repoId: 0, name: '', path: '.', dockerfilePath: 'Dockerfile', branches: [] as string[], blades: [] as { bladeId: number; port: number }[] });
+	let form = $state({ repoId: 0, name: '', path: '.', dockerfilePath: 'Dockerfile', containerPort: 3000, branches: [] as string[], blades: [] as { bladeId: number; port: number }[] });
 	let repoBranches = $state<Record<number, string[]>>({});
 
 	let showImport = $state(false);
@@ -249,6 +249,10 @@
 				<label class="text-sm text-muted">Dockerfile Path</label>
 				<input bind:value={form.dockerfilePath} placeholder="Dockerfile" />
 			</div>
+			<div>
+				<label class="text-sm text-muted">Container Port</label>
+				<input type="number" bind:value={form.containerPort} placeholder="3000" />
+			</div>
 		</div>
 
 		{#if repoBranches[form.repoId]?.length}
@@ -298,7 +302,7 @@
 					<td class="text-sm">{project.repo_url}</td>
 					<td>
 						{#each project.branches || [] as b}
-							<code style="margin-right:0.3rem;font-size:0.75rem">{b}</code>
+							<code style="margin-right:0.3rem;font-size:0.75rem">{b.branch}:{b.port}</code>
 						{/each}
 						{#if !project.branches?.length}
 							<span class="text-muted text-sm">none</span>

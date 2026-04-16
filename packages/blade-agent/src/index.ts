@@ -13,14 +13,16 @@ async function handleDeploy(req: Request): Promise<Response> {
   const body = (await req.json()) as DeployRequest;
 
   try {
+    const imgName = body.imageName || body.projectName;
     await stopAndRemove(body.projectName);
-    await pullImage(body.registryHost, body.projectName, body.imageTag);
+    await pullImage(body.registryHost, imgName, body.imageTag);
     await startContainer({
       name: body.projectName,
-      image: body.projectName,
+      image: imgName,
       tag: body.imageTag,
       registry: body.registryHost,
       port: body.port,
+      containerPort: body.containerPort,
       envVars: body.envVars,
     });
     trackDeploy(body.projectName, body.imageTag);

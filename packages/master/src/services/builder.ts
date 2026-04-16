@@ -97,8 +97,14 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
   const signal = ac.signal;
   appendLog(key, `=== Build started: ${project.name} @ ${deployBranch} (${imageTag}) ===`);
 
+  // Get branch config for port
+  const branchConfig = db.query(
+    "SELECT port FROM project_branches WHERE project_id = ? AND branch = ?"
+  ).get(project.id, deployBranch) as any;
+  const hostPort = branchConfig?.port || 8080;
+
   const blades = db.query(`
-    SELECT b.*, pb.port FROM project_blades pb
+    SELECT b.* FROM project_blades pb
     JOIN blades b ON b.id = pb.blade_id
     WHERE pb.project_id = ? AND b.status = 'online'
   `).all(project.id) as any[];
@@ -164,11 +170,14 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
           WHERE image_tag = ? AND project_id = ? AND blade_id = ?
         `).run(imageTag, project.id, blade.id);
 
+        const containerName = `${project.name.toLowerCase()}-${deployBranch.replace(/\//g, "-")}`;
         const deployReq: DeployRequest = {
-          projectName: project.name.toLowerCase(),
+          projectName: containerName,
           imageTag,
           registryHost: REGISTRY,
-          port: blade.port,
+          imageName: project.name.toLowerCase(),
+          port: hostPort,
+          containerPort: project.container_port || 3000,
           envVars,
         };
 
@@ -272,7 +281,7 @@ export async function triggerRollback(projectId: number, bladeId: number, imageT
   const res = await fetch(`http://${blade.hostname}:${BLADE_AGENT_PORT}/rollback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectName: project.name.toLowerCase(), imageTag }),
+    body: JSON.stringify({ projectName: project.name.toLowerCase(), imageTag, imageName: project.name.toLowerCase() }),
   });
 
   if (!res.ok) {

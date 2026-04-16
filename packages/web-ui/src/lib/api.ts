@@ -77,19 +77,19 @@ export const api = {
 			request('/projects/' + id + '/deploy', {
 				method: 'POST', body: JSON.stringify({ branch })
 			}),
-		addBranch: (id: number, branch: string) =>
+		addBranch: (id: number, branch: string, port: number) =>
 			request('/projects/' + id + '/branches', {
-				method: 'POST', body: JSON.stringify({ branch })
+				method: 'POST', body: JSON.stringify({ branch, port })
+			}),
+		updateBranch: (id: number, branch: string, port: number) =>
+			request('/projects/' + id + '/branches/' + encodeURIComponent(branch), {
+				method: 'PUT', body: JSON.stringify({ port })
 			}),
 		removeBranch: (id: number, branch: string) =>
 			request('/projects/' + id + '/branches/' + encodeURIComponent(branch), { method: 'DELETE' }),
-		addBlade: (projectId: number, bladeId: number, port: number) =>
+		addBlade: (projectId: number, bladeId: number) =>
 			request('/projects/' + projectId + '/blades', {
-				method: 'POST', body: JSON.stringify({ bladeId, port })
-			}),
-		updateBlade: (projectId: number, bladeId: number, port: number) =>
-			request('/projects/' + projectId + '/blades/' + bladeId, {
-				method: 'PUT', body: JSON.stringify({ port })
+				method: 'POST', body: JSON.stringify({ bladeId })
 			}),
 		removeBlade: (projectId: number, bladeId: number) =>
 			request('/projects/' + projectId + '/blades/' + bladeId, { method: 'DELETE' })

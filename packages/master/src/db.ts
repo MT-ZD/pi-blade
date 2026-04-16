@@ -36,13 +36,15 @@ function migrate(db: Database) {
       repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
       name TEXT UNIQUE NOT NULL,
       path TEXT NOT NULL DEFAULT '.',
-      dockerfile_path TEXT NOT NULL DEFAULT 'Dockerfile'
+      dockerfile_path TEXT NOT NULL DEFAULT 'Dockerfile',
+      container_port INTEGER NOT NULL DEFAULT 3000
     );
 
     CREATE TABLE IF NOT EXISTS project_branches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       branch TEXT NOT NULL,
+      port INTEGER NOT NULL DEFAULT 8080,
       UNIQUE(project_id, branch)
     );
 
@@ -57,7 +59,6 @@ function migrate(db: Database) {
     CREATE TABLE IF NOT EXISTS project_blades (
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       blade_id INTEGER NOT NULL REFERENCES blades(id) ON DELETE CASCADE,
-      port INTEGER NOT NULL,
       PRIMARY KEY (project_id, blade_id)
     );
 
@@ -120,5 +121,13 @@ function migrate(db: Database) {
 
   try {
     db.exec("ALTER TABLE deploys ADD COLUMN branch TEXT");
+  } catch (_) {}
+
+  try {
+    db.exec("ALTER TABLE projects ADD COLUMN container_port INTEGER NOT NULL DEFAULT 3000");
+  } catch (_) {}
+
+  try {
+    db.exec("ALTER TABLE project_branches ADD COLUMN port INTEGER NOT NULL DEFAULT 8080");
   } catch (_) {}
 }

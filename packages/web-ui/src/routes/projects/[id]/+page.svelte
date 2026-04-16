@@ -15,12 +15,12 @@
 	let pasteContent = $state('');
 	let pasteScope = $state('global');
 	let showBladeForm = $state(false);
-	let bladeForm = $state({ bladeId: 0, port: 8080 });
 	let showBranchAdd = $state(false);
 	let newBranch = $state('');
+	let newBranchPort = $state(8080);
 
 	let editing = $state(false);
-	let editForm = $state({ name: '', path: '', dockerfilePath: '' });
+	let editForm = $state({ name: '', path: '', dockerfilePath: '', containerPort: 3000 });
 
 	let logLines = $state<string[]>([]);
 	let logTitle = $state('');
@@ -34,7 +34,6 @@
 	onMount(async () => {
 		await refresh();
 		allBlades = await api.blades.list();
-		if (allBlades.length > 0) bladeForm.bladeId = allBlades[0].id;
 	});
 
 	async function refresh() {
@@ -49,8 +48,9 @@
 	// Branches
 	async function addBranch() {
 		if (!newBranch) return;
-		await api.projects.addBranch(projectId, newBranch);
+		await api.projects.addBranch(projectId, newBranch, newBranchPort);
 		newBranch = '';
+		newBranchPort = 8080;
 		showBranchAdd = false;
 		await refresh();
 	}
@@ -61,16 +61,77 @@
 		await refresh();
 	}
 
+	async function updateBranchPort(branch: string, port: number) {
+		await api.projects.updateBranch(projectId, branch, port);
+	}
+
 	async function deployBranch(branch: string) {
 		await api.projects.deploy(projectId, branch);
 		deploys = await api.deploys.byProject(projectId);
-		// Find the latest deploy to get imageTag for live log
-		const latest = deploys.find((d: any) => d.branch === branch && (d.status === 'building' || d.status === 'pushing' || d.status === 'deploying'));
-		if (latest) {
-			openLiveLogs(latest.image_tag, branch);
-		}
+		const latest = deploys.find((d: any) => d.branch === branch && ['building', 'pushing', 'deploying'].includes(d.status));
+		if (latest) openLiveLogs(latest.image_tag, branch);
 	}
 
+	// Env vars
+	async function addVar() {
+		await api.projectVars.add(projectId, varForm);
+		varForm = { key: '', value: '', scope: 'global' };
+		showVarForm = false;
+		vars = await api.projectVars.list(projectId);
+	}
+
+	async function removeVar(id: number) {
+		await api.projectVars.remove(id);
+		vars = await api.projectVars.list(projectId);
+	}
+
+	async function importEnvFile() {
+		const lines = pasteContent.split('\n');
+		let count = 0;
+		for (const line of lines) {
+			const trimmed = line.trim();
+			if (!trimmed || trimmed.startsWith('#')) continue;
+			const eqIdx = trimmed.indexOf('=');
+			if (eqIdx < 1) continue;
+			const key = trimmed.slice(0, eqIdx).trim();
+			let value = trimmed.slice(eqIdx + 1).trim();
+			if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+				value = value.slice(1, -1);
+			}
+			await api.projectVars.add(projectId, { key, value, scope: pasteScope });
+			count++;
+		}
+		pasteContent = '';
+		showPasteForm = false;
+		vars = await api.projectVars.list(projectId);
+		alert(`Imported ${count} variable(s)`);
+	}
+
+	// Blades
+	async function addBlade(bladeId: number) {
+		await api.projects.addBlade(projectId, bladeId);
+		showBladeForm = false;
+		project = await api.projects.get(projectId);
+	}
+
+	async function removeBlade(bladeId: number) {
+		await api.projects.removeBlade(projectId, bladeId);
+		project = await api.projects.get(projectId);
+	}
+
+	// Edit
+	function startEdit() {
+		editing = true;
+		editForm = { name: project.name, path: project.path, dockerfilePath: project.dockerfile_path, containerPort: project.container_port || 3000 };
+	}
+
+	async function saveEdit() {
+		await api.projects.update(projectId, editForm);
+		editing = false;
+		await refresh();
+	}
+
+	// Logs
 	function openLiveLogs(imageTag: string, branch: string) {
 		closeLog();
 		logTitle = `${project.name} @ ${branch} (${imageTag})`;
@@ -80,7 +141,6 @@
 		logDone = false;
 
 		const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
-		// SSE doesn't support auth headers, pass token as query param
 		const url = `/api/builds/${encodeURIComponent(project.name)}/${encodeURIComponent(imageTag)}/logs${token ? '?token=' + encodeURIComponent(token) : ''}`;
 		logEventSource = new EventSource(url);
 		logEventSource.onmessage = (e) => {
@@ -89,11 +149,9 @@
 				logDone = true;
 				logEventSource?.close();
 				logEventSource = null;
-				deploys = deploys; // trigger reactivity
 				api.deploys.byProject(projectId).then((d) => deploys = d);
 			} else {
 				logLines = [...logLines, data];
-				// Auto-scroll
 				setTimeout(() => {
 					const el = document.getElementById('log-container');
 					if (el) el.scrollTop = el.scrollHeight;
@@ -108,7 +166,6 @@
 	}
 
 	async function viewLog(deployId: number, imageTag: string, branch: string) {
-		// Check if this build has a live/recent in-memory log
 		try {
 			const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
 			const activeRes = await fetch('/api/builds/active', {
@@ -116,14 +173,12 @@
 			});
 			const active = await activeRes.json() as { key: string; finished: boolean }[];
 			const key = `${project.name}:${imageTag}`;
-			const match = active.find((a: any) => a.key === key);
-			if (match) {
+			if (active.find((a: any) => a.key === key)) {
 				openLiveLogs(imageTag, branch);
 				return;
 			}
 		} catch {}
 
-		// Fall back to stored log
 		closeLog();
 		logTitle = `${project.name} @ ${branch || '?'} (${imageTag})`;
 		logOpen = true;
@@ -157,66 +212,6 @@
 		logImageTag = '';
 	}
 
-	// Env vars
-	async function addVar() {
-		await api.projectVars.add(projectId, varForm);
-		varForm = { key: '', value: '', scope: 'global' };
-		showVarForm = false;
-		vars = await api.projectVars.list(projectId);
-	}
-
-	async function removeVar(id: number) {
-		await api.projectVars.remove(id);
-		vars = await api.projectVars.list(projectId);
-	}
-
-	async function importEnvFile() {
-		const lines = pasteContent.split('\n');
-		let count = 0;
-		for (const line of lines) {
-			const trimmed = line.trim();
-			if (!trimmed || trimmed.startsWith('#')) continue;
-			const eqIdx = trimmed.indexOf('=');
-			if (eqIdx < 1) continue;
-			const key = trimmed.slice(0, eqIdx).trim();
-			let value = trimmed.slice(eqIdx + 1).trim();
-			// Strip surrounding quotes
-			if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-				value = value.slice(1, -1);
-			}
-			await api.projectVars.add(projectId, { key, value, scope: pasteScope });
-			count++;
-		}
-		pasteContent = '';
-		showPasteForm = false;
-		vars = await api.projectVars.list(projectId);
-		alert(`Imported ${count} variable(s)`);
-	}
-
-	// Blades
-	async function addBlade() {
-		await api.projects.addBlade(projectId, bladeForm.bladeId, bladeForm.port);
-		showBladeForm = false;
-		project = await api.projects.get(projectId);
-	}
-
-	async function removeBlade(bladeId: number) {
-		await api.projects.removeBlade(projectId, bladeId);
-		project = await api.projects.get(projectId);
-	}
-
-	// Edit
-	function startEdit() {
-		editing = true;
-		editForm = { name: project.name, path: project.path, dockerfilePath: project.dockerfile_path };
-	}
-
-	async function saveEdit() {
-		await api.projects.update(projectId, editForm);
-		editing = false;
-		await refresh();
-	}
-
 	// Rollback
 	async function rollback(d: any) {
 		if (!confirm(`Rollback to ${d.image_tag}?`)) return;
@@ -231,7 +226,7 @@
 		return allBlades.filter((b) => !assigned.has(b.id));
 	}
 	function unaddedBranches() {
-		const added = new Set(project?.branches || []);
+		const added = new Set((project?.branches || []).map((b: any) => b.branch));
 		return repoBranches.filter((b) => !added.has(b));
 	}
 </script>
@@ -251,7 +246,7 @@
 
 	{#if editing}
 		<div class="card mb-2">
-			<div class="grid grid-3 gap-2 mb-1">
+			<div class="grid grid-4 gap-2 mb-1">
 				<div>
 					<label class="text-sm text-muted">Name</label>
 					<input bind:value={editForm.name} />
@@ -264,6 +259,10 @@
 					<label class="text-sm text-muted">Dockerfile</label>
 					<input bind:value={editForm.dockerfilePath} />
 				</div>
+				<div>
+					<label class="text-sm text-muted">Container Port</label>
+					<input type="number" bind:value={editForm.containerPort} />
+				</div>
 			</div>
 			<div class="flex gap-1">
 				<button onclick={saveEdit}>Save</button>
@@ -272,10 +271,11 @@
 		</div>
 	{:else}
 		<div class="card mb-2">
-			<div class="grid grid-3 text-sm">
+			<div class="grid grid-4 text-sm">
 				<div><span class="text-muted">Repo:</span> {project.repo_url}</div>
 				<div><span class="text-muted">Path:</span> {project.path}</div>
 				<div><span class="text-muted">Dockerfile:</span> {project.dockerfile_path}</div>
+				<div><span class="text-muted">Container Port:</span> {project.container_port || 3000}</div>
 			</div>
 		</div>
 	{/if}
@@ -292,9 +292,10 @@
 		<div class="card mb-2">
 			<div class="flex gap-1 items-end">
 				<div style="flex:1">
+					<label class="text-sm text-muted">Branch</label>
 					{#if unaddedBranches().length > 0}
 						<select bind:value={newBranch}>
-							<option value="">Select branch...</option>
+							<option value="">Select...</option>
 							{#each unaddedBranches() as b}
 								<option value={b}>{b}</option>
 							{/each}
@@ -302,6 +303,10 @@
 					{:else}
 						<input bind:value={newBranch} placeholder="branch name" />
 					{/if}
+				</div>
+				<div style="width:120px">
+					<label class="text-sm text-muted">Host Port</label>
+					<input type="number" bind:value={newBranchPort} />
 				</div>
 				<button onclick={addBranch} style="margin-bottom:1px">Add</button>
 			</div>
@@ -311,21 +316,25 @@
 	<div class="card mb-2">
 		{#if project.branches?.length > 0}
 			<table>
-				<thead><tr><th>Branch</th><th></th></tr></thead>
+				<thead><tr><th>Branch</th><th>Host Port</th><th></th></tr></thead>
 				<tbody>
-					{#each project.branches as branch}
+					{#each project.branches as b}
 						<tr>
-							<td><code>{branch}</code></td>
+							<td><code>{b.branch}</code></td>
+							<td>
+								<input type="number" value={b.port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem"
+									onchange={(e) => updateBranchPort(b.branch, parseInt((e.target as HTMLInputElement).value))} />
+							</td>
 							<td class="flex gap-1" style="justify-content:flex-end">
-								<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deployBranch(branch)}>Deploy</button>
-								<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeBranch(branch)}>Remove</button>
+								<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deployBranch(b.branch)}>Deploy</button>
+								<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeBranch(b.branch)}>Remove</button>
 							</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
 		{:else}
-			<div class="text-muted" style="padding:0.75rem">No branches configured — add a branch to start deploying</div>
+			<div class="text-muted" style="padding:0.75rem">No branches configured</div>
 		{/if}
 	</div>
 
@@ -342,17 +351,16 @@
 			<div class="flex gap-1 items-end">
 				<div style="flex:1">
 					<label class="text-sm text-muted">Blade</label>
-					<select bind:value={bladeForm.bladeId}>
+					<select id="blade-select">
 						{#each availableBlades() as blade}
 							<option value={blade.id}>{blade.name}</option>
 						{/each}
 					</select>
 				</div>
-				<div style="width:120px">
-					<label class="text-sm text-muted">Port</label>
-					<input type="number" bind:value={bladeForm.port} />
-				</div>
-				<button onclick={addBlade} style="margin-bottom:1px">Add</button>
+				<button onclick={() => {
+					const sel = document.getElementById('blade-select') as HTMLSelectElement;
+					if (sel?.value) addBlade(parseInt(sel.value));
+				}} style="margin-bottom:1px">Add</button>
 			</div>
 		</div>
 	{/if}
@@ -360,13 +368,12 @@
 	<div class="card mb-2">
 		{#if project.blades?.length > 0}
 			<table>
-				<thead><tr><th>Blade</th><th>Hostname</th><th>Port</th><th></th></tr></thead>
+				<thead><tr><th>Blade</th><th>Hostname</th><th></th></tr></thead>
 				<tbody>
 					{#each project.blades as blade}
 						<tr>
 							<td>{blade.name}</td>
 							<td class="text-sm text-muted">{blade.hostname}</td>
-							<td>{blade.port}</td>
 							<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeBlade(blade.id)}>Remove</button></td>
 						</tr>
 					{/each}
@@ -394,15 +401,15 @@
 		<div class="card mb-2">
 			<div class="mb-1">
 				<label class="text-sm text-muted">Paste .env file content</label>
-				<textarea bind:value={pasteContent} rows="8" placeholder="KEY=value&#10;DATABASE_URL=postgres://...&#10;# comments are ignored" style="font-family:monospace;font-size:0.8rem"></textarea>
+				<textarea bind:value={pasteContent} rows="8" placeholder="KEY=value&#10;# comments ignored" style="font-family:monospace;font-size:0.8rem"></textarea>
 			</div>
 			<div class="flex gap-1 items-end">
 				<div style="flex:1">
 					<label class="text-sm text-muted">Scope</label>
 					<select bind:value={pasteScope}>
-						<option value="global">Global (all branches)</option>
-						{#each project.branches || [] as branch}
-							<option value={branch}>{branch} only</option>
+						<option value="global">Global</option>
+						{#each project.branches || [] as b}
+							<option value={b.branch}>{b.branch} only</option>
 						{/each}
 					</select>
 				</div>
@@ -426,9 +433,9 @@
 			<div class="mb-1">
 				<label class="text-sm text-muted">Scope</label>
 				<select bind:value={varForm.scope}>
-					<option value="global">Global (all branches)</option>
-					{#each project.branches || [] as branch}
-						<option value={branch}>{branch} only</option>
+					<option value="global">Global</option>
+					{#each project.branches || [] as b}
+						<option value={b.branch}>{b.branch} only</option>
 					{/each}
 				</select>
 			</div>
@@ -455,11 +462,11 @@
 		{/if}
 	</div>
 
-	{#each project.branches || [] as branch}
-		{@const bVars = branchVars(branch)}
+	{#each project.branches || [] as b}
+		{@const bVars = branchVars(b.branch)}
 		{#if bVars.length > 0}
 			<div class="card mb-2">
-				<h3 class="mb-1" style="font-size:0.9rem"><code>{branch}</code> overrides</h3>
+				<h3 class="mb-1" style="font-size:0.9rem"><code>{b.branch}</code> overrides</h3>
 				<table>
 					<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
 					<tbody>
