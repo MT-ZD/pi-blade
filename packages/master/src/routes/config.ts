@@ -9,6 +9,7 @@ interface ConfigV1 {
     url: string;
     poll_interval: number;
     is_monorepo: number;
+    // ssh_key and github_token excluded for security
     projects: {
       name: string;
       path: string;
@@ -175,7 +176,7 @@ function validateConfig(config: any, conflictStrategy: string): ValidationResult
   const hasSSH = (config.repos || []).some((r: any) =>
     r.url?.startsWith("git@") || r.url?.includes("ssh://")
   );
-  if (hasSSH) warnings.push("Some repos use SSH URLs — SSH keys must be configured manually after import");
+  if (hasSSH) warnings.push("Some repos use SSH URLs — SSH keys and GitHub tokens must be configured manually after import");
 
   return { valid: errors.length === 0, errors, warnings, plan };
 }
@@ -217,7 +218,6 @@ function applyConfig(config: any, conflictStrategy: string): { ok: boolean; erro
         } else if (existingProj && conflictStrategy === "overwrite") {
           db.query("UPDATE projects SET repo_id = ?, path = ?, dockerfile_path = ?, container_port = ? WHERE id = ?")
             .run(repoId, proj.path || ".", proj.dockerfile_path || "Dockerfile", proj.container_port || 3000, existingProj.id);
-          // Clear existing branches/vars/blades for overwrite
           db.query("DELETE FROM project_branches WHERE project_id = ?").run(existingProj.id);
           db.query("DELETE FROM project_vars WHERE project_id = ?").run(existingProj.id);
           db.query("DELETE FROM project_blades WHERE project_id = ?").run(existingProj.id);
