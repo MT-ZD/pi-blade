@@ -105,14 +105,31 @@
 		};
 	}
 
-	async function viewStoredLog(deployId: number, imageTag: string, branch: string) {
+	async function viewLog(deployId: number, imageTag: string, branch: string) {
+		// Check if this build has a live/recent in-memory log
+		try {
+			const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
+			const activeRes = await fetch('/api/builds/active', {
+				headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+			});
+			const active = await activeRes.json() as { key: string; finished: boolean }[];
+			const key = `${project.name}:${imageTag}`;
+			const match = active.find((a: any) => a.key === key);
+			if (match) {
+				openLiveLogs(imageTag, branch);
+				return;
+			}
+		} catch {}
+
+		// Fall back to stored log
 		closeLog();
 		logTitle = `${project.name} @ ${branch || '?'} (${imageTag})`;
 		logOpen = true;
 		logDone = true;
 		try {
+			const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1];
 			const res = await fetch(`/api/deploys/${deployId}/log`, {
-				headers: { 'Authorization': `Bearer ${document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/)?.[1] || ''}` }
+				headers: token ? { 'Authorization': `Bearer ${token}` } : {}
 			});
 			const data = await res.json();
 			logLines = (data.log || 'No log available').split('\n');
@@ -483,7 +500,7 @@
 						<td><span class="badge {d.status}">{d.status}</span></td>
 						<td class="text-muted text-sm">{new Date(d.timestamp).toLocaleString()}</td>
 						<td class="flex gap-1">
-							<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewStoredLog(d.id, d.image_tag, d.branch)}>Logs</button>
+							<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewLog(d.id, d.image_tag, d.branch)}>Logs</button>
 							{#if d.status === 'running'}
 								<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => rollback(d)}>Rollback</button>
 							{/if}

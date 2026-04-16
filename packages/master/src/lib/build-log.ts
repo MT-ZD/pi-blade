@@ -48,3 +48,11 @@ export function subscribe(key: string, cb: Subscriber): () => void {
 export function logKey(projectName: string, imageTag: string) {
   return `${projectName}:${imageTag}`;
 }
+
+export function getActiveLogs(): { key: string; finished: boolean }[] {
+  const result: { key: string; finished: boolean }[] = [];
+  for (const [key, log] of logs) {
+    result.push({ key, finished: log.finished });
+  }
+  return result;
+}

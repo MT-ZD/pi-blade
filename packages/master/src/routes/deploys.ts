@@ -1,5 +1,5 @@
 import { getDb } from "../db.ts";
-import { getLog, subscribe, logKey } from "../lib/build-log.ts";
+import { getLog, subscribe, logKey, getActiveLogs } from "../lib/build-log.ts";
 
 export async function handleDeployRoutes(req: Request, path: string): Promise<Response | null> {
   const db = getDb();
@@ -27,6 +27,11 @@ export async function handleDeployRoutes(req: Request, path: string): Promise<Re
       LIMIT 50
     `).all(projectId);
     return Response.json(deploys);
+  }
+
+  // GET /api/builds/active — list active/recent build logs
+  if (req.method === "GET" && path === "/api/builds/active") {
+    return Response.json(getActiveLogs());
   }
 
   // GET /api/deploys/:id/log — get stored log
