@@ -192,6 +192,12 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
           throw new Error(err.error || "deploy failed");
         }
 
+        // Mark previous running deploys for this branch+blade as superseded
+        db.query(`
+          UPDATE deploys SET status = 'superseded'
+          WHERE project_id = ? AND blade_id = ? AND branch = ? AND status = 'running'
+        `).run(project.id, blade.id, deployBranch);
+
         db.query(`
           UPDATE deploys SET status = 'running'
           WHERE image_tag = ? AND project_id = ? AND blade_id = ?
