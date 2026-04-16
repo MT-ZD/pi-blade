@@ -224,6 +224,11 @@
 		return running?.image_tag || null;
 	}
 
+	function currentDeployId(branch: string): number | null {
+		const running = deploys.find((d: any) => d.branch === branch && d.status === 'running');
+		return running?.id || null;
+	}
+
 	async function redeploy(d: any) {
 		if (!confirm(`Redeploy ${d.image_tag} on ${d.branch}?`)) return;
 		await api.projects.deploy(projectId, d.branch);
@@ -533,7 +538,7 @@
 			<thead><tr><th>Branch</th><th>Blade</th><th>Image</th><th>Status</th><th>Time</th><th></th></tr></thead>
 			<tbody>
 				{#each deploys as d}
-					{@const isCurrent = d.status === 'running' && d.image_tag === currentVersion(d.branch)}
+					{@const isCurrent = d.id === currentDeployId(d.branch)}
 					<tr style={isCurrent ? 'background:rgba(74,222,128,0.05)' : ''}>
 						<td><code>{d.branch || '-'}</code></td>
 						<td>{d.blade_name}</td>
