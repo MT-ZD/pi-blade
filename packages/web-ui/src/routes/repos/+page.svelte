@@ -9,7 +9,7 @@
 	let generating = $state(false);
 	let connStatus = $state<Record<number, { ok: boolean; error?: string; loading: boolean }>>({});
 	let editingId = $state<number | null>(null);
-	let editForm = $state({ url: '', pollInterval: 60, isMonorepo: false });
+	let editForm = $state({ url: '', pollInterval: 60, isMonorepo: false, githubToken: '' });
 
 	onMount(async () => { await refresh(); });
 
@@ -49,12 +49,15 @@
 			url: repo.url,
 			pollInterval: repo.poll_interval,
 			isMonorepo: !!repo.is_monorepo,
+			githubToken: '',
 		};
 	}
 
 	async function saveEdit() {
 		if (editingId === null) return;
-		await api.repos.update(editingId, editForm);
+		const data: any = { url: editForm.url, pollInterval: editForm.pollInterval, isMonorepo: editForm.isMonorepo };
+		if (editForm.githubToken) data.githubToken = editForm.githubToken;
+		await api.repos.update(editingId, data);
 		editingId = null;
 		await refresh();
 	}
@@ -170,7 +173,9 @@
 							{/if}
 						</td>
 						<td></td>
-						<td></td>
+						<td>
+							<input type="password" bind:value={editForm.githubToken} placeholder="ghp_..." style="font-size:0.75rem;width:100px" />
+						</td>
 						<td class="flex gap-1">
 							<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={saveEdit}>Save</button>
 							<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={cancelEdit}>Cancel</button>
