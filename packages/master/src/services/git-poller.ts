@@ -2,6 +2,7 @@ import { getDb } from "../db.ts";
 import { buildAndDeploy } from "./builder.ts";
 import { sshEnvForRepo, cleanupSshKey } from "../lib/ssh.ts";
 
+// Track commits per project (not per repo), since each project has its own branch
 const lastKnownCommits = new Map<number, string>();
 
 async function getLatestCommit(url: string, branch: string, env?: Record<string, string>): Promise<string> {
@@ -23,52 +24,37 @@ async function getChangedPaths(repoDir: string, oldCommit: string, newCommit: st
   return output.trim().split("\n").filter(Boolean);
 }
 
-async function pollRepo(repo: any) {
-  const sshEnv = sshEnvForRepo(repo);
-  try {
-    const latestCommit = await getLatestCommit(repo.url, repo.branch, sshEnv);
-    if (!latestCommit) return;
+async function pollProject(project: any, repo: any, sshEnv?: Record<string, string>) {
+  const latestCommit = await getLatestCommit(repo.url, project.branch, sshEnv);
+  if (!latestCommit) return;
 
-    const previousCommit = lastKnownCommits.get(repo.id);
-    if (previousCommit === latestCommit) return;
+  const previousCommit = lastKnownCommits.get(project.id);
+  if (previousCommit === latestCommit) return;
 
-    console.log(`[poller] Change detected in repo ${repo.url}: ${latestCommit.slice(0, 8)}`);
-    lastKnownCommits.set(repo.id, latestCommit);
+  console.log(`[poller] Change detected for "${project.name}" on ${project.branch}: ${latestCommit.slice(0, 8)}`);
+  lastKnownCommits.set(project.id, latestCommit);
 
-    if (!previousCommit) return;
+  if (!previousCommit) return;
 
-    const db = getDb();
-    const projects = db.query(
-      "SELECT * FROM projects WHERE repo_id = ?"
-    ).all(repo.id) as any[];
+  if (repo.is_monorepo) {
+    const repoDir = `/tmp/pi-blade-repos/${repo.id}-${project.branch}`;
+    const cloneProc = Bun.spawn(["git", "clone", "--bare", "--branch", project.branch, repo.url, repoDir], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: sshEnv ? { ...process.env, ...sshEnv } : undefined,
+    });
+    await cloneProc.exited;
 
-    if (repo.is_monorepo && previousCommit) {
-      const repoDir = `/tmp/pi-blade-repos/${repo.id}`;
-      const cloneProc = Bun.spawn(["git", "clone", "--bare", repo.url, repoDir], {
-        stdout: "pipe",
-        stderr: "pipe",
-        env: sshEnv ? { ...process.env, ...sshEnv } : undefined,
-      });
-      await cloneProc.exited;
+    const changedPaths = await getChangedPaths(repoDir, previousCommit, latestCommit);
+    const affected = changedPaths.some((p) => p.startsWith(project.path));
 
-      const changedPaths = await getChangedPaths(repoDir, previousCommit, latestCommit);
+    Bun.spawn(["rm", "-rf", repoDir], { stdout: "ignore", stderr: "ignore" });
 
-      for (const project of projects) {
-        const affected = changedPaths.some((p) => p.startsWith(project.path));
-        if (affected) {
-          console.log(`[poller] Project "${project.name}" affected, triggering build`);
-          await buildAndDeploy(project, repo, latestCommit);
-        }
-      }
-    } else {
-      for (const project of projects) {
-        console.log(`[poller] Triggering build for "${project.name}"`);
-        await buildAndDeploy(project, repo, latestCommit);
-      }
-    }
-  } finally {
-    cleanupSshKey(repo.id);
+    if (!affected) return;
   }
+
+  console.log(`[poller] Triggering build for "${project.name}"`);
+  await buildAndDeploy(project, repo, latestCommit);
 }
 
 export function startPoller() {
@@ -76,13 +62,21 @@ export function startPoller() {
 
   const poll = async () => {
     const db = getDb();
-    const repos = db.query("SELECT * FROM repos").all() as any[];
+    const projects = db.query(`
+      SELECT p.*, r.url as repo_url, r.is_monorepo, r.ssh_key, r.id as rid
+      FROM projects p
+      JOIN repos r ON r.id = p.repo_id
+    `).all() as any[];
 
-    for (const repo of repos) {
+    for (const project of projects) {
+      const repo = { id: project.rid, url: project.repo_url, is_monorepo: project.is_monorepo, ssh_key: project.ssh_key };
+      const sshEnv = sshEnvForRepo(repo);
       try {
-        await pollRepo(repo);
+        await pollProject(project, repo, sshEnv);
       } catch (e: any) {
-        console.error(`[poller] Error polling ${repo.url}: ${e.message}`);
+        console.error(`[poller] Error polling "${project.name}": ${e.message}`);
+      } finally {
+        cleanupSshKey(repo.id);
       }
     }
   };

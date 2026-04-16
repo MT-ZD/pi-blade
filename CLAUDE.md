@@ -42,11 +42,11 @@ pi-blade/
 - **Blade**: a Raspberry Pi running the blade-agent, registered with master
 - **Project**: a deployable unit within a repo (supports monorepos via path config)
 - **Upstream**: a route's set of blade:port targets for nginx load balancing
-- **Environment**: per-project env var set (production/staging/development), one active at deploy time
+- **Environment**: per-project env vars with two scopes: global (all branches) and branch-specific (overrides global)
 
 ## Data Model
 
-Core tables: blades, repos (with optional encrypted ssh_key), projects (with active_environment), project_environments, project_env_vars, deploys, routes, upstreams, alerts, settings
+Core tables: blades, repos (with optional encrypted ssh_key), projects (with branch), project_vars (with scope: global or branch name), deploys, routes, upstreams, alerts, settings
 
 ## Blade Agent API
 

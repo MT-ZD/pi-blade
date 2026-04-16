@@ -5,7 +5,7 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
 
   if (req.method === "GET" && path === "/api/projects") {
     const projects = db.query(`
-      SELECT p.*, r.url as repo_url, r.branch as repo_branch
+      SELECT p.*, r.url as repo_url
       FROM projects p
       JOIN repos r ON r.id = p.repo_id
       ORDER BY p.name
@@ -16,7 +16,7 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
   if (req.method === "GET" && path.match(/^\/api\/projects\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
     const project = db.query(`
-      SELECT p.*, r.url as repo_url, r.branch as repo_branch
+      SELECT p.*, r.url as repo_url
       FROM projects p
       JOIN repos r ON r.id = p.repo_id
       WHERE p.id = ?
@@ -38,17 +38,19 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
       name: string;
       path?: string;
       dockerfilePath?: string;
+      branch?: string;
       blades?: { bladeId: number; port: number }[];
     };
 
     const result = db.query(`
-      INSERT INTO projects (repo_id, name, path, dockerfile_path)
-      VALUES (?1, ?2, ?3, ?4)
+      INSERT INTO projects (repo_id, name, path, dockerfile_path, branch)
+      VALUES (?1, ?2, ?3, ?4, ?5)
     `).run(
       body.repoId,
       body.name,
       body.path || ".",
       body.dockerfilePath || "Dockerfile",
+      body.branch || "main",
     );
 
     const projectId = result.lastInsertRowid;
@@ -63,6 +65,30 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
     }
 
     return Response.json({ ok: true, id: projectId });
+  }
+
+  if (req.method === "PUT" && path.match(/^\/api\/projects\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    const body = await req.json() as {
+      name?: string;
+      path?: string;
+      dockerfilePath?: string;
+      branch?: string;
+    };
+    const existing = db.query("SELECT * FROM projects WHERE id = ?").get(id) as any;
+    if (!existing) return Response.json({ error: "not found" }, { status: 404 });
+
+    db.query(`
+      UPDATE projects SET name = ?1, path = ?2, dockerfile_path = ?3, branch = ?4
+      WHERE id = ?5
+    `).run(
+      body.name ?? existing.name,
+      body.path ?? existing.path,
+      body.dockerfilePath ?? existing.dockerfile_path,
+      body.branch ?? existing.branch,
+      id,
+    );
+    return Response.json({ ok: true });
   }
 
   if (req.method === "DELETE" && path.match(/^\/api\/projects\/\d+$/)) {

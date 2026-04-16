@@ -9,7 +9,6 @@ export interface Blade {
 export interface Repo {
   id: number;
   url: string;
-  branch: string;
   pollInterval: number;
   isMonorepo: boolean;
 }
@@ -20,7 +19,7 @@ export interface Project {
   name: string;
   path: string;
   dockerfilePath: string;
-  activeEnvironment: string;
+  branch: string;
 }
 
 export interface Deploy {
@@ -48,17 +47,12 @@ export interface Upstream {
   weight: number;
 }
 
-export interface ProjectEnvironment {
+export interface ProjectVar {
   id: number;
   projectId: number;
-  environment: string;
-}
-
-export interface ProjectEnvVar {
-  id: number;
-  projectEnvId: number;
   key: string;
   value: string;
+  scope: string;
 }
 
 export interface Alert {

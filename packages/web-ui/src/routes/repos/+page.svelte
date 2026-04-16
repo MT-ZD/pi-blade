@@ -4,14 +4,12 @@
 
 	let repos = $state<any[]>([]);
 	let showForm = $state(false);
-	let form = $state({ url: '', branch: 'main', pollInterval: 60, isMonorepo: false, sshKey: '' });
+	let form = $state({ url: '', pollInterval: 60, isMonorepo: false, sshKey: '' });
 	let generatedKey = $state<{ repoId: number; publicKey: string } | null>(null);
 	let generating = $state(false);
 	let connStatus = $state<Record<number, { ok: boolean; error?: string; loading: boolean }>>({});
-	let repoBranches = $state<Record<number, string[]>>({});
-	let branchLoading = $state<Record<number, boolean>>({});
 	let editingId = $state<number | null>(null);
-	let editForm = $state({ url: '', branch: '', pollInterval: 60, isMonorepo: false });
+	let editForm = $state({ url: '', pollInterval: 60, isMonorepo: false });
 
 	onMount(async () => { await refresh(); });
 
@@ -28,22 +26,10 @@
 			try {
 				const res = await api.repos.test(repo.id);
 				connStatus[repo.id] = { ok: res.ok, error: res.error, loading: false };
-				if (res.ok) fetchBranches(repo.id);
 			} catch (e: any) {
 				connStatus[repo.id] = { ok: false, error: e.message, loading: false };
 			}
 		}));
-	}
-
-	async function fetchBranches(id: number) {
-		branchLoading[id] = true;
-		try {
-			repoBranches[id] = await api.repos.branches(id);
-		} catch {
-			repoBranches[id] = [];
-		} finally {
-			branchLoading[id] = false;
-		}
 	}
 
 	async function addRepo() {
@@ -51,7 +37,7 @@
 			...form,
 			sshKey: form.sshKey || undefined,
 		});
-		form = { url: '', branch: 'main', pollInterval: 60, isMonorepo: false, sshKey: '' };
+		form = { url: '', pollInterval: 60, isMonorepo: false, sshKey: '' };
 		showForm = false;
 		await refresh();
 	}
@@ -60,7 +46,6 @@
 		editingId = repo.id;
 		editForm = {
 			url: repo.url,
-			branch: repo.branch,
 			pollInterval: repo.poll_interval,
 			isMonorepo: !!repo.is_monorepo,
 		};
@@ -123,10 +108,6 @@
 				<input bind:value={form.url} placeholder="git@github.com:user/repo.git" />
 			</div>
 			<div>
-				<label class="text-sm text-muted">Branch</label>
-				<input bind:value={form.branch} />
-			</div>
-			<div>
 				<label class="text-sm text-muted">Poll Interval (seconds)</label>
 				<input type="number" bind:value={form.pollInterval} />
 			</div>
@@ -161,30 +142,16 @@
 <div class="card">
 	<table>
 		<thead>
-			<tr><th>URL</th><th>Branch</th><th>Poll</th><th>Monorepo</th><th>Status</th><th>SSH</th><th></th></tr>
+			<tr><th>URL</th><th>Poll</th><th>Monorepo</th><th>Status</th><th>SSH</th><th></th></tr>
 		</thead>
 		<tbody>
 			{#each repos as repo}
 				{@const s = connStatus[repo.id]}
-				{@const branches = repoBranches[repo.id]}
 				{#if editingId === repo.id}
 					<tr>
 						<td><input bind:value={editForm.url} style="font-size:0.8rem;width:100%" /></td>
-						<td>
-							{#if branches && branches.length > 0}
-								<select bind:value={editForm.branch} style="font-size:0.8rem;padding:0.2rem 0.3rem">
-									{#each branches as b}
-										<option value={b}>{b}</option>
-									{/each}
-								</select>
-							{:else}
-								<input bind:value={editForm.branch} style="font-size:0.8rem;width:80px" />
-							{/if}
-						</td>
 						<td><input type="number" bind:value={editForm.pollInterval} style="font-size:0.8rem;width:60px" /></td>
-						<td>
-							<input type="checkbox" bind:checked={editForm.isMonorepo} style="width:auto" />
-						</td>
+						<td><input type="checkbox" bind:checked={editForm.isMonorepo} style="width:auto" /></td>
 						<td>
 							{#if !s || s.loading}
 								<span class="text-muted text-sm">testing...</span>
@@ -203,18 +170,6 @@
 				{:else}
 					<tr>
 						<td>{repo.url}</td>
-						<td>
-							{#if branches && branches.length > 0}
-								<select value={repo.branch} onchange={(e) => { api.repos.update(repo.id, { branch: (e.target as HTMLSelectElement).value }); refresh(); }}
-									style="font-size:0.8rem;padding:0.2rem 0.3rem">
-									{#each branches as b}
-										<option value={b} selected={b === repo.branch}>{b}</option>
-									{/each}
-								</select>
-							{:else}
-								{repo.branch}
-							{/if}
-						</td>
 						<td>{repo.poll_interval}s</td>
 						<td>{repo.is_monorepo ? 'Yes' : 'No'}</td>
 						<td>

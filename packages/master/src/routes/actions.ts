@@ -9,13 +9,13 @@ export async function handleActionRoutes(req: Request, path: string): Promise<Re
   if (req.method === "POST" && path.match(/^\/api\/projects\/\d+\/deploy$/)) {
     const projectId = parseInt(path.split("/")[3]);
     const project = db.query(`
-      SELECT p.*, r.url, r.branch FROM projects p
+      SELECT p.*, r.url, r.ssh_key FROM projects p
       JOIN repos r ON r.id = p.repo_id
       WHERE p.id = ?
     `).get(projectId) as any;
     if (!project) return Response.json({ error: "not found" }, { status: 404 });
 
-    const repo = { id: project.repo_id, url: project.url, branch: project.branch };
+    const repo = { id: project.repo_id, url: project.url, ssh_key: project.ssh_key };
     const body = (await req.json().catch(() => ({}))) as { commitSha?: string };
 
     const commitSha = body.commitSha || "HEAD";

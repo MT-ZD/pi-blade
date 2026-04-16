@@ -13,17 +13,15 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
   if (req.method === "POST" && path === "/api/repos") {
     const body = await req.json() as {
       url: string;
-      branch?: string;
       pollInterval?: number;
       isMonorepo?: boolean;
       sshKey?: string;
     };
     const result = db.query(`
-      INSERT INTO repos (url, branch, poll_interval, is_monorepo, ssh_key)
-      VALUES (?1, ?2, ?3, ?4, ?5)
+      INSERT INTO repos (url, poll_interval, is_monorepo, ssh_key)
+      VALUES (?1, ?2, ?3, ?4)
     `).run(
       body.url,
-      body.branch || "main",
       body.pollInterval || 60,
       body.isMonorepo ? 1 : 0,
       body.sshKey ? encrypt(body.sshKey) : null,
@@ -35,7 +33,6 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
     const id = parseInt(path.split("/").pop()!);
     const body = await req.json() as {
       url?: string;
-      branch?: string;
       pollInterval?: number;
       isMonorepo?: boolean;
       sshKey?: string | null;
@@ -49,11 +46,10 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
     }
 
     db.query(`
-      UPDATE repos SET url = ?1, branch = ?2, poll_interval = ?3, is_monorepo = ?4, ssh_key = ?5
-      WHERE id = ?6
+      UPDATE repos SET url = ?1, poll_interval = ?2, is_monorepo = ?3, ssh_key = ?4
+      WHERE id = ?5
     `).run(
       body.url ?? existing.url,
-      body.branch ?? existing.branch,
       body.pollInterval ?? existing.poll_interval,
       body.isMonorepo !== undefined ? (body.isMonorepo ? 1 : 0) : existing.is_monorepo,
       sshKey,
@@ -107,20 +103,26 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
     const repo = db.query("SELECT * FROM repos WHERE id = ?").get(id) as any;
     if (!repo) return Response.json({ error: "not found" }, { status: 404 });
 
+    const url = new URL(req.url);
+    const branch = url.searchParams.get("branch") || undefined;
+
     const cloneDir = `/tmp/pi-blade-detect-${id}-${Date.now()}`;
     const sshEnv = sshEnvForRepo(repo);
+    const cloneCmd = ["git", "clone", "--depth", "1"];
+    if (branch) cloneCmd.push("--branch", branch);
+    cloneCmd.push(repo.url, cloneDir);
+
     try {
-      const cloneProc = Bun.spawn(
-        ["git", "clone", "--depth", "1", "--branch", repo.branch, repo.url, cloneDir],
-        { stdout: "pipe", stderr: "pipe", env: sshEnv ? { ...process.env, ...sshEnv } : undefined },
-      );
+      const cloneProc = Bun.spawn(cloneCmd, {
+        stdout: "pipe", stderr: "pipe",
+        env: sshEnv ? { ...process.env, ...sshEnv } : undefined,
+      });
       const cloneCode = await cloneProc.exited;
       if (cloneCode !== 0) {
         const err = await new Response(cloneProc.stderr).text();
         return Response.json({ error: `clone failed: ${err.trim()}` }, { status: 500 });
       }
 
-      // Find all Dockerfiles
       const findProc = Bun.spawn(
         ["find", cloneDir, "-name", "Dockerfile", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/.git/*"],
         { stdout: "pipe", stderr: "pipe" },
@@ -152,8 +154,7 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
     const sshEnv = sshEnvForRepo(repo);
     try {
       const proc = Bun.spawn(["git", "ls-remote", "--heads", repo.url], {
-        stdout: "pipe",
-        stderr: "pipe",
+        stdout: "pipe", stderr: "pipe",
         env: sshEnv ? { ...process.env, ...sshEnv } : undefined,
       });
       const output = await new Response(proc.stdout).text();
@@ -174,16 +175,14 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
 
     const sshEnv = sshEnvForRepo(repo);
     try {
-      const proc = Bun.spawn(["git", "ls-remote", "--exit-code", repo.url, `refs/heads/${repo.branch}`], {
-        stdout: "pipe",
-        stderr: "pipe",
+      const proc = Bun.spawn(["git", "ls-remote", "--exit-code", repo.url], {
+        stdout: "pipe", stderr: "pipe",
         env: sshEnv ? { ...process.env, ...sshEnv } : undefined,
       });
-      const stderr = await new Response(proc.stderr).text();
+      await new Response(proc.stdout).text();
       const code = await proc.exited;
-      if (code === 0) {
-        return Response.json({ ok: true });
-      }
+      if (code === 0) return Response.json({ ok: true });
+      const stderr = await new Response(proc.stderr).text();
       return Response.json({ ok: false, error: stderr.trim() || `exit code ${code}` });
     } catch (e: any) {
       return Response.json({ ok: false, error: e.message });

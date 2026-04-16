@@ -27,7 +27,6 @@ function migrate(db: Database) {
     CREATE TABLE IF NOT EXISTS repos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       url TEXT NOT NULL,
-      branch TEXT NOT NULL DEFAULT 'main',
       poll_interval INTEGER NOT NULL DEFAULT 60,
       is_monorepo INTEGER NOT NULL DEFAULT 0
     );
@@ -38,21 +37,15 @@ function migrate(db: Database) {
       name TEXT UNIQUE NOT NULL,
       path TEXT NOT NULL DEFAULT '.',
       dockerfile_path TEXT NOT NULL DEFAULT 'Dockerfile',
-      active_environment TEXT NOT NULL DEFAULT 'production'
+      branch TEXT NOT NULL DEFAULT 'main'
     );
 
-    CREATE TABLE IF NOT EXISTS project_environments (
+    CREATE TABLE IF NOT EXISTS project_vars (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-      environment TEXT NOT NULL,
-      UNIQUE(project_id, environment)
-    );
-
-    CREATE TABLE IF NOT EXISTS project_env_vars (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_env_id INTEGER NOT NULL REFERENCES project_environments(id) ON DELETE CASCADE,
       key TEXT NOT NULL,
-      value TEXT NOT NULL
+      value TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'global'
     );
 
     CREATE TABLE IF NOT EXISTS project_blades (
@@ -119,6 +112,6 @@ function migrate(db: Database) {
   } catch (_) {}
 
   try {
-    db.exec("ALTER TABLE projects ADD COLUMN active_environment TEXT NOT NULL DEFAULT 'production'");
+    db.exec("ALTER TABLE projects ADD COLUMN branch TEXT NOT NULL DEFAULT 'main'");
   } catch (_) {}
 }

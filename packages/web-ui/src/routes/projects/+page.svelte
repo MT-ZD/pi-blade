@@ -6,13 +6,16 @@
 	let repos = $state<any[]>([]);
 	let blades = $state<any[]>([]);
 	let showForm = $state(false);
-	let form = $state({ repoId: 0, name: '', path: '.', dockerfilePath: 'Dockerfile', blades: [] as { bladeId: number; port: number }[] });
+	let form = $state({ repoId: 0, name: '', path: '.', dockerfilePath: 'Dockerfile', branch: 'main', blades: [] as { bladeId: number; port: number }[] });
+	let repoBranches = $state<Record<number, string[]>>({});
 
 	let showImport = $state(false);
 	let importRepoId = $state(0);
+	let importBranch = $state('');
 	let detected = $state<{ name: string; path: string; dockerfilePath: string }[]>([]);
 	let detecting = $state(false);
 	let importBlades = $state<{ bladeId: number; port: number }[]>([]);
+	let importRepoBranches = $state<string[]>([]);
 
 	onMount(async () => {
 		const [p, r, b] = await Promise.all([api.projects.list(), api.repos.list(), api.blades.list()]);
@@ -22,14 +25,46 @@
 		if (repos.length > 0) {
 			form.repoId = repos[0].id;
 			importRepoId = repos[0].id;
+			fetchBranches(repos[0].id);
 		}
 	});
 
 	async function refresh() { projects = await api.projects.list(); }
 
+	async function fetchBranches(repoId: number) {
+		try {
+			const branches = await api.repos.branches(repoId);
+			repoBranches[repoId] = branches;
+			if (!importRepoBranches.length && repoId === importRepoId) {
+				importRepoBranches = branches;
+				if (branches.length > 0) importBranch = branches[0];
+			}
+			if (branches.length > 0 && form.repoId === repoId) {
+				form.branch = branches.includes(form.branch) ? form.branch : branches[0];
+			}
+		} catch {
+			repoBranches[repoId] = [];
+		}
+	}
+
+	async function onRepoChange(repoId: number) {
+		form.repoId = repoId;
+		if (!repoBranches[repoId]) await fetchBranches(repoId);
+		const branches = repoBranches[repoId] || [];
+		form.branch = branches[0] || 'main';
+	}
+
+	async function onImportRepoChange(repoId: number) {
+		importRepoId = repoId;
+		if (!repoBranches[repoId]) await fetchBranches(repoId);
+		importRepoBranches = repoBranches[repoId] || [];
+		importBranch = importRepoBranches[0] || '';
+		detected = [];
+	}
+
 	async function addProject() {
 		await api.projects.create(form);
-		form = { repoId: repos[0]?.id || 0, name: '', path: '.', dockerfilePath: 'Dockerfile', blades: [] };
+		form = { repoId: repos[0]?.id || 0, name: '', path: '.', dockerfilePath: 'Dockerfile', branch: 'main', blades: [] };
 		showForm = false;
 		await refresh();
 	}
@@ -46,7 +81,7 @@
 	async function detect() {
 		detecting = true;
 		try {
-			detected = await api.repos.detectProjects(importRepoId);
+			detected = await api.repos.detectProjects(importRepoId, importBranch || undefined);
 		} catch (e: any) {
 			alert('Detection failed: ' + e.message);
 			detected = [];
@@ -70,6 +105,7 @@
 			name: p.name,
 			path: p.path,
 			dockerfilePath: p.dockerfilePath,
+			branch: importBranch,
 			blades: importBlades,
 		});
 		detected = detected.filter((d) => d.name !== p.name);
@@ -107,11 +143,23 @@
 		<div class="flex gap-1 items-end mb-1">
 			<div style="flex:1">
 				<label class="text-sm text-muted">Repository</label>
-				<select bind:value={importRepoId}>
+				<select bind:value={importRepoId} onchange={(e) => onImportRepoChange(parseInt((e.target as HTMLSelectElement).value))}>
 					{#each repos as repo}
 						<option value={repo.id}>{repo.url}</option>
 					{/each}
 				</select>
+			</div>
+			<div style="flex:0.5">
+				<label class="text-sm text-muted">Branch</label>
+				{#if importRepoBranches.length > 0}
+					<select bind:value={importBranch}>
+						{#each importRepoBranches as b}
+							<option value={b}>{b}</option>
+						{/each}
+					</select>
+				{:else}
+					<input bind:value={importBranch} placeholder="main" />
+				{/if}
 			</div>
 			<button onclick={detect} disabled={detecting} style="margin-bottom:1px">
 				{detecting ? 'Scanning...' : 'Detect Projects'}
@@ -169,11 +217,23 @@
 			</div>
 			<div>
 				<label class="text-sm text-muted">Repository</label>
-				<select bind:value={form.repoId}>
+				<select bind:value={form.repoId} onchange={(e) => onRepoChange(parseInt((e.target as HTMLSelectElement).value))}>
 					{#each repos as repo}
 						<option value={repo.id}>{repo.url}</option>
 					{/each}
 				</select>
+			</div>
+			<div>
+				<label class="text-sm text-muted">Branch</label>
+				{#if repoBranches[form.repoId]?.length}
+					<select bind:value={form.branch}>
+						{#each repoBranches[form.repoId] as b}
+							<option value={b}>{b}</option>
+						{/each}
+					</select>
+				{:else}
+					<input bind:value={form.branch} placeholder="main" />
+				{/if}
 			</div>
 			<div>
 				<label class="text-sm text-muted">Path in Repo</label>
@@ -209,15 +269,15 @@
 <div class="card">
 	<table>
 		<thead>
-			<tr><th>Name</th><th>Repo</th><th>Path</th><th>Active Env</th><th></th></tr>
+			<tr><th>Name</th><th>Repo</th><th>Branch</th><th>Path</th><th></th></tr>
 		</thead>
 		<tbody>
 			{#each projects as project}
 				<tr>
-					<td><a href="/projects/{project.id}">{project.name}</a></td>
+					<td>{project.name}</td>
 					<td class="text-sm">{project.repo_url}</td>
+					<td><code>{project.branch}</code></td>
 					<td>{project.path}</td>
-					<td>{project.active_environment}</td>
 					<td class="flex gap-1">
 						<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deploy(project.id)}>Deploy</button>
 						<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeProject(project.id)}>Delete</button>

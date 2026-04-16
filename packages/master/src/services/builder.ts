@@ -58,7 +58,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string)
   const sshEnv = sshEnvForRepo(repo);
   try {
     console.log(`[builder] Cloning ${repo.url} for "${project.name}"`);
-    await runCmd(["git", "clone", "--depth", "1", "--branch", repo.branch, repo.url, cloneDir], { env: sshEnv });
+    await runCmd(["git", "clone", "--depth", "1", "--branch", project.branch, repo.url, cloneDir], { env: sshEnv });
 
     const buildContext = `${cloneDir}/${project.path}`;
     const dockerfilePath = `${buildContext}/${project.dockerfile_path}`;
@@ -74,17 +74,13 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string)
       WHERE image_tag = ? AND project_id = ?
     `).run(imageTag, project.id);
 
-    let envVars: Record<string, string> = {};
-    const projEnv = db.query(`
-      SELECT pe.id FROM project_environments pe
-      JOIN projects p ON p.id = ?1
-      WHERE pe.project_id = ?1 AND pe.environment = p.active_environment
-    `).get(project.id) as any;
-    if (projEnv) {
-      const vars = db.query(
-        "SELECT key, value FROM project_env_vars WHERE project_env_id = ?"
-      ).all(projEnv.id) as any[];
-      envVars = Object.fromEntries(vars.map((v: any) => [v.key, v.value]));
+    // Merge global vars + branch-specific vars (branch overrides global)
+    const allVars = db.query(
+      "SELECT key, value, scope FROM project_vars WHERE project_id = ? AND (scope = 'global' OR scope = ?) ORDER BY scope ASC"
+    ).all(project.id, project.branch) as any[];
+    const envVars: Record<string, string> = {};
+    for (const v of allVars) {
+      envVars[v.key] = v.value; // branch vars come after global, so they override
     }
 
     let allBladesSucceeded = true;
