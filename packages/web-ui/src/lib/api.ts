@@ -98,6 +98,8 @@ export const api = {
 		list: () => request<any[]>('/routes'),
 		create: (data: any) =>
 			request('/routes', { method: 'POST', body: JSON.stringify(data) }),
+		update: (id: number, data: any) =>
+			request('/routes/' + id, { method: 'PUT', body: JSON.stringify(data) }),
 		remove: (id: number) => request('/routes/' + id, { method: 'DELETE' }),
 		addUpstream: (routeId: number, data: any) =>
 			request('/routes/' + routeId + '/upstreams', {

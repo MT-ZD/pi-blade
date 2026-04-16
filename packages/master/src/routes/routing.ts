@@ -53,6 +53,21 @@ export async function handleRoutingRoutes(req: Request, path: string): Promise<R
     return Response.json({ ok: true, id: routeId });
   }
 
+  if (req.method === "PUT" && path.match(/^\/api\/routes\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    const body = await req.json() as { domain?: string; projectId?: number };
+    const existing = db.query("SELECT * FROM routes WHERE id = ?").get(id) as any;
+    if (!existing) return Response.json({ error: "not found" }, { status: 404 });
+
+    db.query("UPDATE routes SET domain = ?1, project_id = ?2 WHERE id = ?3").run(
+      body.domain ?? existing.domain,
+      body.projectId ?? existing.project_id,
+      id,
+    );
+    await regenerateNginxConfig();
+    return Response.json({ ok: true });
+  }
+
   if (req.method === "POST" && path.match(/^\/api\/routes\/\d+\/upstreams$/)) {
     const routeId = parseInt(path.split("/")[3]);
     const body = await req.json() as { bladeId: number; port: number; weight?: number };

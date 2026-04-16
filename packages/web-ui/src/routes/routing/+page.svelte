@@ -8,12 +8,19 @@
 	let showForm = $state(false);
 	let form = $state({ domain: '', projectId: 0, upstreams: [] as { bladeId: number; port: number; weight: number }[] });
 
+	let editingRoute = $state<number | null>(null);
+	let editDomain = $state('');
+	let editProjectId = $state(0);
+	let addingUpstreamTo = $state<number | null>(null);
+	let newUpstream = $state({ bladeId: 0, port: 8080, weight: 1 });
+
 	onMount(async () => {
 		const [r, p, b] = await Promise.all([api.routes.list(), api.projects.list(), api.blades.list()]);
 		routes = r;
 		projects = p;
 		blades = b;
 		if (projects.length > 0) form.projectId = projects[0].id;
+		if (blades.length > 0) newUpstream.bladeId = blades[0].id;
 	});
 
 	async function refresh() { routes = await api.routes.list(); }
@@ -23,10 +30,9 @@
 		form = { domain: '', projectId: projects[0]?.id || 0, upstreams: [] };
 		showForm = false;
 		await refresh();
-		await api.nginx.reload();
 	}
 
-	function addUpstream() {
+	function addFormUpstream() {
 		if (blades.length === 0) return;
 		form.upstreams = [...form.upstreams, { bladeId: blades[0].id, port: 8080, weight: 1 }];
 	}
@@ -35,13 +41,36 @@
 		if (!confirm('Delete this route?')) return;
 		await api.routes.remove(id);
 		await refresh();
-		await api.nginx.reload();
+	}
+
+	function startEditRoute(route: any) {
+		editingRoute = route.id;
+		editDomain = route.domain;
+		editProjectId = route.project_id;
+	}
+
+	async function saveEditRoute() {
+		if (editingRoute === null) return;
+		await api.routes.update(editingRoute, { domain: editDomain, projectId: editProjectId });
+		editingRoute = null;
+		await refresh();
+	}
+
+	function startAddUpstream(routeId: number) {
+		addingUpstreamTo = routeId;
+		newUpstream = { bladeId: blades[0]?.id || 0, port: 8080, weight: 1 };
+	}
+
+	async function addUpstreamToRoute() {
+		if (addingUpstreamTo === null) return;
+		await api.routes.addUpstream(addingUpstreamTo, newUpstream);
+		addingUpstreamTo = null;
+		await refresh();
 	}
 
 	async function removeUpstream(id: number) {
 		await api.routes.removeUpstream(id);
 		await refresh();
-		await api.nginx.reload();
 	}
 
 	async function reloadNginx() {
@@ -77,7 +106,7 @@
 		<div class="mb-1">
 			<div class="flex justify-between items-center mb-1">
 				<span class="text-sm text-muted">Upstreams</span>
-				<button class="secondary" style="font-size:0.75rem;padding:0.25rem 0.5rem" onclick={addUpstream}>+ Upstream</button>
+				<button class="secondary" style="font-size:0.75rem;padding:0.25rem 0.5rem" onclick={addFormUpstream}>+ Upstream</button>
 			</div>
 			{#each form.upstreams as u, i}
 				<div class="flex gap-1 items-center mb-1">
@@ -99,12 +128,44 @@
 {#each routes as route}
 	<div class="card mb-1">
 		<div class="flex justify-between items-center mb-1">
-			<div>
-				<strong>{route.domain}</strong>
-				<span class="text-muted text-sm"> &rarr; {route.project_name}</span>
-			</div>
-			<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeRoute(route.id)}>Delete</button>
+			{#if editingRoute === route.id}
+				<div class="flex gap-1 items-center" style="flex:1;margin-right:0.5rem">
+					<input bind:value={editDomain} style="font-size:0.85rem;flex:1" />
+					<select bind:value={editProjectId} style="font-size:0.85rem;width:auto">
+						{#each projects as p}
+							<option value={p.id}>{p.name}</option>
+						{/each}
+					</select>
+					<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={saveEditRoute}>Save</button>
+					<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => editingRoute = null}>Cancel</button>
+				</div>
+			{:else}
+				<div>
+					<strong>{route.domain}</strong>
+					<span class="text-muted text-sm"> &rarr; {route.project_name}</span>
+				</div>
+				<div class="flex gap-1">
+					<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => startEditRoute(route)}>Edit</button>
+					<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => startAddUpstream(route.id)}>+ Upstream</button>
+					<button class="danger" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => removeRoute(route.id)}>Delete</button>
+				</div>
+			{/if}
 		</div>
+
+		{#if addingUpstreamTo === route.id}
+			<div class="flex gap-1 items-center mb-1" style="padding:0.5rem;background:var(--bg);border-radius:4px">
+				<select bind:value={newUpstream.bladeId} style="flex:1;font-size:0.85rem">
+					{#each blades as b}
+						<option value={b.id}>{b.name}</option>
+					{/each}
+				</select>
+				<input type="number" bind:value={newUpstream.port} placeholder="Port" style="width:80px;font-size:0.85rem" />
+				<input type="number" bind:value={newUpstream.weight} placeholder="Weight" style="width:70px;font-size:0.85rem" />
+				<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={addUpstreamToRoute}>Add</button>
+				<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => addingUpstreamTo = null}>Cancel</button>
+			</div>
+		{/if}
+
 		{#if route.upstreams?.length > 0}
 			<table>
 				<thead><tr><th>Blade</th><th>Port</th><th>Weight</th><th></th></tr></thead>
