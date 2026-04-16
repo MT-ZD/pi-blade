@@ -5,7 +5,7 @@ MASTER_NAME="piblade-master"
 MASTER_PORT=3000
 REGISTRY_PORT=5000
 STEP=1
-STEPS=8
+STEPS=7
 
 echo "==============================="
 echo "  Pi-Blade — Master Setup"
@@ -19,6 +19,30 @@ if [ -f /etc/os-release ]; then
 else
   echo "Unsupported OS"
   exit 1
+fi
+
+# Ensure git is available for clone + re-exec
+if ! command -v git &> /dev/null; then
+  echo "Installing git..."
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq git
+fi
+
+# Clone/update pi-blade repo and re-exec from latest version
+INSTALL_DIR="/opt/pi-blade"
+REPO_URL="https://github.com/MT-ZD/pi-blade.git"
+sudo mkdir -p "$INSTALL_DIR"
+sudo chown "$USER:$USER" "$INSTALL_DIR"
+
+if [ -d "$INSTALL_DIR/.git" ]; then
+  cd "$INSTALL_DIR" && git pull
+else
+  git clone "$REPO_URL" "$INSTALL_DIR"
+fi
+
+if [ "${PI_BLADE_REEXEC:-0}" != "1" ]; then
+  export PI_BLADE_REEXEC=1
+  exec bash "$INSTALL_DIR/scripts/setup-master.sh"
 fi
 
 # Install Docker
@@ -78,12 +102,6 @@ else
 fi
 STEP=$((STEP + 1))
 
-# Install git
-if ! command -v git &> /dev/null; then
-  echo "Installing git..."
-  sudo apt-get install -y -qq git
-fi
-
 # Set hostname
 echo "[${STEP}/${STEPS}] Setting hostname to ${MASTER_NAME}..."
 sudo hostnamectl set-hostname "$MASTER_NAME"
@@ -123,27 +141,8 @@ fi
 
 STEP=$((STEP + 1))
 
-# Install Pi-Blade
+# Install Pi-Blade dependencies + build
 echo "[${STEP}/${STEPS}] Installing Pi-Blade..."
-
-INSTALL_DIR="/opt/pi-blade"
-sudo mkdir -p "$INSTALL_DIR"
-sudo chown "$USER:$USER" "$INSTALL_DIR"
-
-REPO_URL="https://github.com/MT-ZD/pi-blade.git"
-
-if [ -d "$INSTALL_DIR/.git" ]; then
-  cd "$INSTALL_DIR" && git pull
-else
-  git clone "$REPO_URL" "$INSTALL_DIR"
-fi
-
-# Re-exec from repo copy so the rest of the script is always up to date
-if [ "${PI_BLADE_REEXEC:-0}" != "1" ]; then
-  export PI_BLADE_REEXEC=1
-  exec bash "$INSTALL_DIR/scripts/setup-master.sh"
-fi
-
 cd "$INSTALL_DIR"
 bun install
 cd "$INSTALL_DIR/packages/web-ui" && bun run build && cd "$INSTALL_DIR"
