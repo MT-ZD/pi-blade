@@ -236,6 +236,7 @@
 				<tbody>
 					{#each project.branches as b}
 						{@const ver = currentVersion(b.branch)}
+						{@const h = healthStatus[b.branch]}
 						<tr>
 							<td><code>{b.branch}</code></td>
 							<td><input type="number" value={b.port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateBranchPort(b.branch, parseInt((e.target as HTMLInputElement).value))} /></td>
@@ -248,7 +249,6 @@
 								{/if}
 							</td>
 							<td>
-								{@const h = healthStatus[b.branch]}
 								{#if h}
 									{#if h.healthy}
 										<span class="badge online" style="font-size:0.65rem">healthy</span>
