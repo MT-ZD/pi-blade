@@ -320,7 +320,7 @@
 					</tr>
 				{:else}
 					<tr>
-						<td>{project.name}</td>
+						<td><a href="/projects/{project.id}">{project.name}</a></td>
 						<td class="text-sm">{project.repo_url}</td>
 						<td><code>{project.branch}</code></td>
 						<td>{project.path}</td>
