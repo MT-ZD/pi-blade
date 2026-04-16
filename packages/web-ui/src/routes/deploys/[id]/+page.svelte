@@ -175,23 +175,9 @@
 		</div>
 	</div>
 
-	<h2 class="mb-1">Build Log</h2>
-	<div class="card mb-2">
-		<div class="flex justify-between items-center mb-1">
-			{#if !logDone}
-				<span class="badge building">live</span>
-			{:else}
-				<span class="badge online">done</span>
-			{/if}
-		</div>
-		<div id="build-log" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;max-height:500px;overflow-y:auto;font-family:monospace;font-size:0.75rem;line-height:1.5;white-space:pre-wrap;word-break:break-all">
-			{logLines.join('\n')}
-		</div>
-	</div>
-
 	{#if deploy.status === 'running'}
 		<h2 class="mb-1">Container Log</h2>
-		<div class="card">
+		<div class="card mb-2">
 			<div class="flex justify-between items-center mb-1">
 				<span class="text-sm text-muted">{deploy.project_name.toLowerCase()}-{(deploy.branch || 'main').replace(/\//g, '-')} on {deploy.blade_name}</span>
 				<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={loadContainerLogs}>
@@ -205,6 +191,20 @@
 			{/if}
 		</div>
 	{/if}
+
+	<h2 class="mb-1">Build Log</h2>
+	<div class="card mb-2">
+		<div class="flex justify-between items-center mb-1">
+			{#if !logDone}
+				<span class="badge building">live</span>
+			{:else}
+				<span class="badge online">done</span>
+			{/if}
+		</div>
+		<div id="build-log" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;max-height:500px;overflow-y:auto;font-family:monospace;font-size:0.75rem;line-height:1.5;white-space:pre-wrap;word-break:break-all">
+			{logLines.join('\n')}
+		</div>
+	</div>
 {:else}
 	<div class="card text-muted">Loading...</div>
 {/if}
