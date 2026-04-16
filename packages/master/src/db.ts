@@ -120,6 +120,10 @@ function migrate(db: Database) {
   } catch (_) {}
 
   try {
+    db.exec("ALTER TABLE repos ADD COLUMN github_token TEXT");
+  } catch (_) {}
+
+  try {
     db.exec("ALTER TABLE deploys ADD COLUMN branch TEXT");
   } catch (_) {}
 

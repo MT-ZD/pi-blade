@@ -5,6 +5,7 @@ import { sendDiscordAlert } from "../routes/alerts.ts";
 import { postCommitStatus } from "./github.ts";
 import { sshEnvForRepo, cleanupSshKey } from "../lib/ssh.ts";
 import { createLog, appendLog, finishLog, logKey } from "../lib/build-log.ts";
+import { decrypt } from "../lib/crypto.ts";
 
 const REGISTRY = `localhost:${REGISTRY_PORT}`;
 
@@ -93,6 +94,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
   const cloneDir = `/tmp/pi-blade-build/${project.name}-${imageTag}`;
   const key = logKey(project.name, imageTag);
 
+  const ghToken = repo.github_token ? decrypt(repo.github_token) : null;
   const ac = createLog(key);
   const signal = ac.signal;
   appendLog(key, `=== Build started: ${project.name} @ ${deployBranch} (${imageTag}) ===`);
@@ -130,6 +132,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
     state: "pending",
     description: `Building "${project.name}"...`,
     context: `pi-blade/${project.name}`,
+    token: ghToken,
   });
 
   const sshEnv = sshEnvForRepo(repo);
@@ -231,6 +234,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
         ? `Deployed "${project.name}" to ${blades.length} blade(s)`
         : `Deploy of "${project.name}" failed on some blades`,
       context: `pi-blade/${project.name}`,
+      token: ghToken,
     });
   } catch (e: any) {
     if (e instanceof BuildAbortedError || signal.aborted) {
@@ -258,6 +262,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
         state: "failure",
         description: `Build failed for "${project.name}"`,
         context: `pi-blade/${project.name}`,
+        token: ghToken,
       });
     }
   } finally {

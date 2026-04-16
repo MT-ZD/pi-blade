@@ -4,7 +4,7 @@
 
 	let repos = $state<any[]>([]);
 	let showForm = $state(false);
-	let form = $state({ url: '', pollInterval: 60, isMonorepo: false, sshKey: '' });
+	let form = $state({ url: '', pollInterval: 60, isMonorepo: false, sshKey: '', githubToken: '' });
 	let generatedKey = $state<{ repoId: number; publicKey: string } | null>(null);
 	let generating = $state(false);
 	let connStatus = $state<Record<number, { ok: boolean; error?: string; loading: boolean }>>({});
@@ -36,8 +36,9 @@
 		await api.repos.create({
 			...form,
 			sshKey: form.sshKey || undefined,
+			githubToken: form.githubToken || undefined,
 		});
-		form = { url: '', pollInterval: 60, isMonorepo: false, sshKey: '' };
+		form = { url: '', pollInterval: 60, isMonorepo: false, sshKey: '', githubToken: '' };
 		showForm = false;
 		await refresh();
 	}
@@ -123,6 +124,13 @@
 				<textarea bind:value={form.sshKey} rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" style="font-family:monospace;font-size:0.75rem"></textarea>
 			</div>
 		</details>
+		<details class="mb-1">
+			<summary class="text-sm" style="cursor:pointer">GitHub Token (for commit statuses)</summary>
+			<div style="margin-top:0.5rem">
+				<label class="text-sm text-muted">Personal Access Token with <code>repo:status</code> scope</label>
+				<input type="password" bind:value={form.githubToken} placeholder="ghp_..." />
+			</div>
+		</details>
 		<button onclick={addRepo}>Save</button>
 	</div>
 {/if}
@@ -142,7 +150,7 @@
 <div class="card">
 	<table>
 		<thead>
-			<tr><th>URL</th><th>Poll</th><th>Monorepo</th><th>Status</th><th>SSH</th><th></th></tr>
+			<tr><th>URL</th><th>Poll</th><th>Monorepo</th><th>Status</th><th>SSH</th><th>GitHub</th><th></th></tr>
 		</thead>
 		<tbody>
 			{#each repos as repo}
@@ -161,6 +169,7 @@
 								<span class="badge offline" title={s.error}>failed</span>
 							{/if}
 						</td>
+						<td></td>
 						<td></td>
 						<td class="flex gap-1">
 							<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={saveEdit}>Save</button>
@@ -190,6 +199,14 @@
 								<button onclick={() => generateKey(repo.id)} disabled={generating} style="font-size:0.65rem;padding:0.15rem 0.4rem">
 									{generating ? '...' : 'Generate'}
 								</button>
+							{/if}
+						</td>
+						<td>
+							{#if repo.has_github_token}
+								<span class="badge online" style="font-size:0.65rem">PAT set</span>
+								<button onclick={() => api.repos.update(repo.id, { githubToken: null }).then(refresh)} style="font-size:0.6rem;padding:0.1rem 0.3rem" class="danger">x</button>
+							{:else}
+								<span class="text-muted text-sm">none</span>
 							{/if}
 						</td>
 						<td class="flex gap-1">

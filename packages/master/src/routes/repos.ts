@@ -7,7 +7,7 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
 
   if (req.method === "GET" && path === "/api/repos") {
     const repos = db.query("SELECT * FROM repos ORDER BY id").all() as any[];
-    return Response.json(repos.map((r) => ({ ...r, ssh_key: undefined, has_ssh_key: !!r.ssh_key })));
+    return Response.json(repos.map((r) => ({ ...r, ssh_key: undefined, github_token: undefined, has_ssh_key: !!r.ssh_key, has_github_token: !!r.github_token })));
   }
 
   if (req.method === "POST" && path === "/api/repos") {
@@ -16,15 +16,17 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
       pollInterval?: number;
       isMonorepo?: boolean;
       sshKey?: string;
+      githubToken?: string;
     };
     const result = db.query(`
-      INSERT INTO repos (url, poll_interval, is_monorepo, ssh_key)
-      VALUES (?1, ?2, ?3, ?4)
+      INSERT INTO repos (url, poll_interval, is_monorepo, ssh_key, github_token)
+      VALUES (?1, ?2, ?3, ?4, ?5)
     `).run(
       body.url,
       body.pollInterval || 60,
       body.isMonorepo ? 1 : 0,
       body.sshKey ? encrypt(body.sshKey) : null,
+      body.githubToken ? encrypt(body.githubToken) : null,
     );
     return Response.json({ ok: true, id: result.lastInsertRowid });
   }
@@ -36,6 +38,7 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
       pollInterval?: number;
       isMonorepo?: boolean;
       sshKey?: string | null;
+      githubToken?: string | null;
     };
     const existing = db.query("SELECT * FROM repos WHERE id = ?").get(id) as any;
     if (!existing) return Response.json({ error: "not found" }, { status: 404 });
@@ -45,14 +48,20 @@ export async function handleRepoRoutes(req: Request, path: string): Promise<Resp
       sshKey = body.sshKey ? encrypt(body.sshKey) : null;
     }
 
+    let githubToken = existing.github_token;
+    if (body.githubToken !== undefined) {
+      githubToken = body.githubToken ? encrypt(body.githubToken) : null;
+    }
+
     db.query(`
-      UPDATE repos SET url = ?1, poll_interval = ?2, is_monorepo = ?3, ssh_key = ?4
-      WHERE id = ?5
+      UPDATE repos SET url = ?1, poll_interval = ?2, is_monorepo = ?3, ssh_key = ?4, github_token = ?5
+      WHERE id = ?6
     `).run(
       body.url ?? existing.url,
       body.pollInterval ?? existing.poll_interval,
       body.isMonorepo !== undefined ? (body.isMonorepo ? 1 : 0) : existing.is_monorepo,
       sshKey,
+      githubToken,
       id,
     );
     return Response.json({ ok: true });

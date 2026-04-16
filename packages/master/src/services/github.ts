@@ -1,5 +1,3 @@
-import { getDb } from "../db.ts";
-
 type GithubState = "pending" | "success" | "failure" | "error";
 
 interface StatusParams {
@@ -8,6 +6,7 @@ interface StatusParams {
   state: GithubState;
   description: string;
   context?: string;
+  token?: string | null;
 }
 
 export function parseGithubRepo(url: string): { owner: string; repo: string } | null {
@@ -16,14 +15,7 @@ export function parseGithubRepo(url: string): { owner: string; repo: string } | 
   return { owner: match[1], repo: match[2] };
 }
 
-function getGithubToken(): string | null {
-  const db = getDb();
-  const row = db.query("SELECT value FROM settings WHERE key = 'github_token'").get() as any;
-  return row?.value || null;
-}
-
-export async function postCommitStatus({ repoUrl, commitSha, state, description, context = "pi-blade" }: StatusParams) {
-  const token = getGithubToken();
+export async function postCommitStatus({ repoUrl, commitSha, state, description, context = "pi-blade", token }: StatusParams) {
   if (!token) return;
 
   const parsed = parseGithubRepo(repoUrl);

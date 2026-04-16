@@ -69,7 +69,7 @@ export function startPoller() {
     const db = getDb();
     // Get all project+branch combos with repo info
     const entries = db.query(`
-      SELECT p.*, pb.branch, r.url as repo_url, r.is_monorepo, r.ssh_key, r.id as rid
+      SELECT p.*, pb.branch, r.url as repo_url, r.is_monorepo, r.ssh_key, r.github_token, r.id as rid
       FROM projects p
       JOIN project_branches pb ON pb.project_id = p.id
       JOIN repos r ON r.id = p.repo_id
@@ -78,7 +78,7 @@ export function startPoller() {
     // Group by repo to reuse SSH env
     const byRepo = new Map<number, { repo: any; items: any[] }>();
     for (const e of entries) {
-      const repo = { id: e.rid, url: e.repo_url, is_monorepo: e.is_monorepo, ssh_key: e.ssh_key };
+      const repo = { id: e.rid, url: e.repo_url, is_monorepo: e.is_monorepo, ssh_key: e.ssh_key, github_token: e.github_token };
       if (!byRepo.has(repo.id)) byRepo.set(repo.id, { repo, items: [] });
       byRepo.get(repo.id)!.items.push(e);
     }
