@@ -123,7 +123,8 @@ export const api = {
 	},
 	deploys: {
 		list: () => request<any[]>('/deploys'),
-		byProject: (id: number) => request<any[]>('/deploys/project/' + id)
+		byProject: (id: number) => request<any[]>('/deploys/project/' + id),
+		updateGithubStatus: (id: number) => request<any>('/deploys/' + id + '/github-status', { method: 'POST' })
 	},
 	alerts: {
 		list: () => request<any[]>('/alerts'),

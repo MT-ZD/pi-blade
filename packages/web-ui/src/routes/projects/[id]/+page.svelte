@@ -269,6 +269,15 @@
 		}
 	}
 
+	async function updateGithubStatus(d: any) {
+		try {
+			const res = await api.deploys.updateGithubStatus(d.id);
+			alert(`GitHub status updated: ${res.state}`);
+		} catch (e: any) {
+			alert(`Failed: ${e.message}`);
+		}
+	}
+
 	function globalVars() { return vars.filter((v: any) => v.scope === 'global'); }
 	function branchVars(branch: string) { return vars.filter((v: any) => v.scope === branch); }
 	function availableBlades() {
@@ -604,6 +613,9 @@
 							<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => viewLog(d)}>Logs</button>
 							{#if d.status === 'running' && !isCurrent}
 								<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => rollback(d)}>Rollback</button>
+							{/if}
+							{#if d.commit_sha}
+								<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => updateGithubStatus(d)}>GH Status</button>
 							{/if}
 							{#if !['building', 'pushing', 'deploying'].includes(d.status)}
 								<button style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => redeploy(d)}>Redeploy</button>

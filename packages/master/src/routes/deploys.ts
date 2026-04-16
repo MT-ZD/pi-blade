@@ -1,5 +1,7 @@
 import { getDb } from "../db.ts";
 import { getLog, subscribe, logKey, getActiveLogs, abortBuild } from "../lib/build-log.ts";
+import { postCommitStatus } from "../services/github.ts";
+import { decrypt } from "../lib/crypto.ts";
 
 export async function handleDeployRoutes(req: Request, path: string): Promise<Response | null> {
   const db = getDb();
@@ -27,6 +29,44 @@ export async function handleDeployRoutes(req: Request, path: string): Promise<Re
       LIMIT 50
     `).all(projectId);
     return Response.json(deploys);
+  }
+
+  // POST /api/deploys/:id/github-status — force update GitHub commit status
+  if (req.method === "POST" && path.match(/^\/api\/deploys\/\d+\/github-status$/)) {
+    const id = parseInt(path.split("/")[3]);
+    const deploy = db.query(`
+      SELECT d.*, p.name as project_name, r.url as repo_url, r.github_token
+      FROM deploys d
+      JOIN projects p ON p.id = d.project_id
+      JOIN repos r ON r.id = p.repo_id
+      WHERE d.id = ?
+    `).get(id) as any;
+    if (!deploy) return Response.json({ error: "not found" }, { status: 404 });
+    if (!deploy.github_token) return Response.json({ error: "no GitHub token configured for this repo" }, { status: 400 });
+    if (!deploy.commit_sha) return Response.json({ error: "no commit SHA on this deploy" }, { status: 400 });
+
+    const token = decrypt(deploy.github_token);
+    const stateMap: Record<string, "pending" | "success" | "failure" | "error"> = {
+      building: "pending", pushing: "pending", deploying: "pending",
+      running: "success", failed: "failure", aborted: "failure", superseded: "success",
+    };
+    const state = stateMap[deploy.status] || "error";
+    const description = state === "success"
+      ? `Deployed "${deploy.project_name}" (${deploy.image_tag})`
+      : state === "pending"
+        ? `Building "${deploy.project_name}"...`
+        : `Deploy of "${deploy.project_name}" ${deploy.status}`;
+
+    await postCommitStatus({
+      repoUrl: deploy.repo_url,
+      commitSha: deploy.commit_sha,
+      state,
+      description,
+      context: `pi-blade/${deploy.project_name}`,
+      token,
+    });
+
+    return Response.json({ ok: true, state });
   }
 
   // POST /api/builds/:projectName/:imageTag/abort — abort a build
