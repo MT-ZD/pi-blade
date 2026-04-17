@@ -104,6 +104,10 @@
 		await refresh();
 	}
 
+	async function updateExtraPort(id: number, field: 'hostPort' | 'containerPort' | 'label', value: any) {
+		await api.projects.updateExtraPort(id, { [field]: value });
+	}
+
 	async function deployBranch(branch: string) {
 		await api.projects.deploy(projectId, branch);
 		deploys = await api.deploys.byProject(projectId);
@@ -292,11 +296,11 @@
 				{#if b.extra_ports?.length > 0}
 					<div style="padding-left:1rem;border-left:2px solid var(--border);margin-top:0.5rem">
 						{#each b.extra_ports as ep}
-							<div class="flex gap-2 items-center text-sm mb-1">
-								<code>{ep.host_port}</code>
+							<div class="flex gap-1 items-center text-sm mb-1">
+								<input type="number" value={ep.host_port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateExtraPort(ep.id, 'hostPort', parseInt((e.target as HTMLInputElement).value))} />
 								<span class="text-muted">→</span>
-								<code>{ep.container_port}</code>
-								{#if ep.label}<span class="text-muted">({ep.label})</span>{/if}
+								<input type="number" value={ep.container_port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateExtraPort(ep.id, 'containerPort', parseInt((e.target as HTMLInputElement).value))} />
+								<input value={ep.label || ''} placeholder="label" style="width:140px;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateExtraPort(ep.id, 'label', (e.target as HTMLInputElement).value)} />
 								<button class="danger" style="font-size:0.65rem;padding:0.1rem 0.3rem" onclick={() => removeExtraPort(ep.id)}>x</button>
 							</div>
 						{/each}

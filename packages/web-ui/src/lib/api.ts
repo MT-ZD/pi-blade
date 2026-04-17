@@ -93,6 +93,8 @@ export const api = {
 			request('/projects/' + id + '/branches/' + encodeURIComponent(branch), { method: 'DELETE' }),
 		addExtraPort: (branchId: number, data: { hostPort: number; containerPort: number; label?: string }) =>
 			request('/branches/' + branchId + '/extra-ports', { method: 'POST', body: JSON.stringify(data) }),
+		updateExtraPort: (id: number, data: { hostPort?: number; containerPort?: number; label?: string }) =>
+			request('/extra-ports/' + id, { method: 'PUT', body: JSON.stringify(data) }),
 		removeExtraPort: (id: number) => request('/extra-ports/' + id, { method: 'DELETE' }),
 		addBlade: (projectId: number, bladeId: number) =>
 			request('/projects/' + projectId + '/blades', {

@@ -163,6 +163,21 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
     return Response.json({ ok: true, id: result.lastInsertRowid });
   }
 
+  // PUT /api/extra-ports/:id
+  if (req.method === "PUT" && path.match(/^\/api\/extra-ports\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    const body = await req.json() as { hostPort?: number; containerPort?: number; label?: string };
+    const existing = db.query("SELECT * FROM branch_extra_ports WHERE id = ?").get(id) as any;
+    if (!existing) return Response.json({ error: "not found" }, { status: 404 });
+    db.query("UPDATE branch_extra_ports SET host_port = ?, container_port = ?, label = ? WHERE id = ?").run(
+      body.hostPort ?? existing.host_port,
+      body.containerPort ?? existing.container_port,
+      body.label !== undefined ? body.label : existing.label,
+      id,
+    );
+    return Response.json({ ok: true });
+  }
+
   // DELETE /api/extra-ports/:id
   if (req.method === "DELETE" && path.match(/^\/api\/extra-ports\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
