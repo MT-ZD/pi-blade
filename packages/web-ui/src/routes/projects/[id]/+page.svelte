@@ -26,6 +26,8 @@
 	let editForm = $state({ name: '', path: '', dockerfilePath: '', containerPort: 3000, buildContext: '' });
 
 	let envsOpen = $state(false);
+	let extraPortForms = $state<Record<number, { hostPort: number; containerPort: number; label: string }>>({});
+	let showExtraPortForm = $state<Record<number, boolean>>({});
 	let revealedVars = $state(new Set<number>());
 	let deployPage = $state(1);
 	const deployPerPage = 10;
@@ -77,6 +79,29 @@
 
 	async function updateBranchPort(branch: string, port: number) {
 		await api.projects.updateBranch(projectId, branch, port);
+	}
+
+	function toggleExtraPortForm(branchId: number) {
+		showExtraPortForm[branchId] = !showExtraPortForm[branchId];
+		showExtraPortForm = { ...showExtraPortForm };
+		if (!extraPortForms[branchId]) {
+			extraPortForms[branchId] = { hostPort: 0, containerPort: 0, label: '' };
+			extraPortForms = { ...extraPortForms };
+		}
+	}
+
+	async function addExtraPort(branchId: number) {
+		const f = extraPortForms[branchId];
+		if (!f || !f.hostPort || !f.containerPort) return;
+		await api.projects.addExtraPort(branchId, f);
+		extraPortForms[branchId] = { hostPort: 0, containerPort: 0, label: '' };
+		showExtraPortForm[branchId] = false;
+		await refresh();
+	}
+
+	async function removeExtraPort(id: number) {
+		await api.projects.removeExtraPort(id);
+		await refresh();
 	}
 
 	async function deployBranch(branch: string) {
@@ -229,54 +254,69 @@
 		</div>
 	{/if}
 
-	<div class="card mb-2">
-		{#if project.branches?.length > 0}
-			<table>
-				<thead><tr><th>Branch</th><th>Host Port</th><th>Deployed</th><th>Health</th><th></th></tr></thead>
-				<tbody>
-					{#each project.branches as b}
-						{@const ver = currentVersion(b.branch)}
-						{@const h = healthStatus[b.branch]}
-						<tr>
-							<td><code>{b.branch}</code></td>
-							<td><input type="number" value={b.port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateBranchPort(b.branch, parseInt((e.target as HTMLInputElement).value))} /></td>
-							<td>
-								{#if ver}
-									<code style="font-size:0.75rem">{ver}</code>
-									<span class="badge running" style="margin-left:0.3rem">live</span>
-								{:else}
-									<span class="text-muted text-sm">not deployed</span>
-								{/if}
-							</td>
-							<td>
-								{#if h}
-									{#if h.healthy}
-										<span class="badge online" style="font-size:0.65rem">healthy</span>
-									{:else if h.running}
-										<span class="badge degraded" style="font-size:0.65rem" title="Restarts: {h.restartCount}, HTTP: {h.httpStatus}">degraded</span>
-									{:else}
-										<span class="badge offline" style="font-size:0.65rem">down</span>
-									{/if}
-									{#if h.uptime}<span class="text-muted" style="font-size:0.7rem;margin-left:0.3rem">{h.uptime}</span>{/if}
-									{#if h.restartCount > 0}<span class="text-muted" style="font-size:0.7rem;margin-left:0.3rem">({h.restartCount} restarts)</span>{/if}
-								{:else if ver}
-									<span class="text-muted text-sm">checking...</span>
-								{:else}
-									<span class="text-muted text-sm">-</span>
-								{/if}
-							</td>
-							<td class="flex gap-1" style="justify-content:flex-end">
-								<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deployBranch(b.branch)}>Deploy</button>
-								<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeBranch(b.branch)}>Remove</button>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		{:else}
-			<div class="text-muted" style="padding:0.75rem">No branches configured</div>
-		{/if}
-	</div>
+	{#if project.branches?.length > 0}
+		{#each project.branches as b}
+			{@const ver = currentVersion(b.branch)}
+			{@const h = healthStatus[b.branch]}
+			<div class="card mb-1">
+				<div class="flex justify-between items-center mb-1">
+					<div class="flex gap-2 items-center" style="flex-wrap:wrap">
+						<strong><code>{b.branch}</code></strong>
+						<span class="text-sm text-muted">Port:</span>
+						<input type="number" value={b.port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateBranchPort(b.branch, parseInt((e.target as HTMLInputElement).value))} />
+						<span class="text-muted">→</span>
+						<span class="text-sm">{project.container_port || 3000} (container)</span>
+						{#if ver}
+							<span class="badge running" style="font-size:0.65rem">live {ver.slice(0,8)}</span>
+						{:else}
+							<span class="text-muted text-sm">not deployed</span>
+						{/if}
+						{#if h}
+							{#if h.healthy}
+								<span class="badge online" style="font-size:0.65rem">healthy</span>
+							{:else if h.running}
+								<span class="badge degraded" style="font-size:0.65rem" title="Restarts: {h.restartCount}, HTTP: {h.httpStatus}">degraded</span>
+							{:else}
+								<span class="badge offline" style="font-size:0.65rem">down</span>
+							{/if}
+							{#if h.uptime}<span class="text-muted" style="font-size:0.7rem">{h.uptime}</span>{/if}
+						{/if}
+					</div>
+					<div class="flex gap-1">
+						<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => toggleExtraPortForm(b.id)}>+ Port</button>
+						<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => deployBranch(b.branch)}>Deploy</button>
+						<button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeBranch(b.branch)}>Remove</button>
+					</div>
+				</div>
+
+				{#if b.extra_ports?.length > 0}
+					<div style="padding-left:1rem;border-left:2px solid var(--border);margin-top:0.5rem">
+						{#each b.extra_ports as ep}
+							<div class="flex gap-2 items-center text-sm mb-1">
+								<code>{ep.host_port}</code>
+								<span class="text-muted">→</span>
+								<code>{ep.container_port}</code>
+								{#if ep.label}<span class="text-muted">({ep.label})</span>{/if}
+								<button class="danger" style="font-size:0.65rem;padding:0.1rem 0.3rem" onclick={() => removeExtraPort(ep.id)}>x</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				{#if showExtraPortForm[b.id]}
+					<div class="flex gap-1 items-end mt-1" style="padding:0.5rem;background:var(--bg);border-radius:4px">
+						<div><label class="text-sm text-muted">Host</label><input type="number" bind:value={extraPortForms[b.id].hostPort} style="width:90px" /></div>
+						<div><label class="text-sm text-muted">Container</label><input type="number" bind:value={extraPortForms[b.id].containerPort} style="width:90px" /></div>
+						<div style="flex:1"><label class="text-sm text-muted">Label (optional)</label><input bind:value={extraPortForms[b.id].label} placeholder="e.g. websocket" /></div>
+						<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => addExtraPort(b.id)}>Add</button>
+						<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => toggleExtraPortForm(b.id)}>Cancel</button>
+					</div>
+				{/if}
+			</div>
+		{/each}
+	{:else}
+		<div class="card text-muted">No branches configured</div>
+	{/if}
 
 	<!-- Blades -->
 	<div class="flex justify-between items-center mb-1">

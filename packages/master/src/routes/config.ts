@@ -44,7 +44,11 @@ function exportConfig(): ConfigV1 {
         dockerfile_path: p.dockerfile_path,
         container_port: p.container_port || 3000,
         build_context: p.build_context || null,
-        branches: db.query("SELECT branch, port FROM project_branches WHERE project_id = ?").all(p.id) as any[],
+        branches: (db.query("SELECT id, branch, port FROM project_branches WHERE project_id = ?").all(p.id) as any[]).map((b: any) => ({
+          branch: b.branch,
+          port: b.port,
+          extra_ports: db.query("SELECT host_port, container_port, label FROM branch_extra_ports WHERE project_branch_id = ?").all(b.id) as any[],
+        })),
         vars: db.query("SELECT key, value, scope FROM project_vars WHERE project_id = ? ORDER BY scope, key").all(p.id) as any[],
         blade_names: (db.query(`
           SELECT b.name FROM project_blades pb
@@ -231,8 +235,15 @@ function applyConfig(config: any, conflictStrategy: string): { ok: boolean; erro
 
         if (!(existingProj && conflictStrategy === "skip")) {
           for (const br of proj.branches || []) {
-            db.query("INSERT OR IGNORE INTO project_branches (project_id, branch, port) VALUES (?, ?, ?)")
+            const branchResult = db.query("INSERT OR IGNORE INTO project_branches (project_id, branch, port) VALUES (?, ?, ?)")
               .run(projectId, br.branch, br.port);
+            const branchId = Number(branchResult.lastInsertRowid) || (db.query("SELECT id FROM project_branches WHERE project_id = ? AND branch = ?").get(projectId, br.branch) as any)?.id;
+            if (branchId) {
+              for (const ep of br.extra_ports || []) {
+                db.query("INSERT INTO branch_extra_ports (project_branch_id, host_port, container_port, label) VALUES (?, ?, ?, ?)")
+                  .run(branchId, ep.host_port, ep.container_port, ep.label || null);
+              }
+            }
           }
           for (const v of proj.vars || []) {
             db.query("INSERT INTO project_vars (project_id, key, value, scope) VALUES (?, ?, ?, ?)")

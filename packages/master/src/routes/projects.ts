@@ -30,8 +30,13 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
     if (!project) return Response.json({ error: "not found" }, { status: 404 });
 
     project.branches = db.query(
-      "SELECT branch, port FROM project_branches WHERE project_id = ? ORDER BY branch"
-    ).all(id);
+      "SELECT id, branch, port FROM project_branches WHERE project_id = ? ORDER BY branch"
+    ).all(id) as any[];
+    for (const b of project.branches as any[]) {
+      b.extra_ports = db.query(
+        "SELECT id, host_port, container_port, label FROM branch_extra_ports WHERE project_branch_id = ? ORDER BY id"
+      ).all(b.id);
+    }
 
     project.blades = db.query(`
       SELECT b.* FROM project_blades pb
@@ -145,6 +150,23 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
     db.query(
       "DELETE FROM project_branches WHERE project_id = ? AND branch = ?"
     ).run(projectId, branch);
+    return Response.json({ ok: true });
+  }
+
+  // POST /api/branches/:branchId/extra-ports — add extra port
+  if (req.method === "POST" && path.match(/^\/api\/branches\/\d+\/extra-ports$/)) {
+    const branchId = parseInt(path.split("/")[3]);
+    const body = await req.json() as { hostPort: number; containerPort: number; label?: string };
+    const result = db.query(
+      "INSERT INTO branch_extra_ports (project_branch_id, host_port, container_port, label) VALUES (?, ?, ?, ?)"
+    ).run(branchId, body.hostPort, body.containerPort, body.label || null);
+    return Response.json({ ok: true, id: result.lastInsertRowid });
+  }
+
+  // DELETE /api/extra-ports/:id
+  if (req.method === "DELETE" && path.match(/^\/api\/extra-ports\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    db.query("DELETE FROM branch_extra_ports WHERE id = ?").run(id);
     return Response.json({ ok: true });
   }
 

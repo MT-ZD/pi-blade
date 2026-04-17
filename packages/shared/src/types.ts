@@ -89,6 +89,7 @@ export interface DeployRequest {
   imageName?: string;
   port: number;
   containerPort: number;
+  extraPorts?: { hostPort: number; containerPort: number }[];
   envVars: Record<string, string>;
 }
 

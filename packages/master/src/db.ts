@@ -49,6 +49,14 @@ function migrate(db: Database) {
       UNIQUE(project_id, branch)
     );
 
+    CREATE TABLE IF NOT EXISTS branch_extra_ports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_branch_id INTEGER NOT NULL REFERENCES project_branches(id) ON DELETE CASCADE,
+      host_port INTEGER NOT NULL,
+      container_port INTEGER NOT NULL,
+      label TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS project_vars (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,

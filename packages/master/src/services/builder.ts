@@ -101,9 +101,12 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
 
   // Get branch config for port
   const branchConfig = db.query(
-    "SELECT port FROM project_branches WHERE project_id = ? AND branch = ?"
+    "SELECT id, port FROM project_branches WHERE project_id = ? AND branch = ?"
   ).get(project.id, deployBranch) as any;
   const hostPort = branchConfig?.port || 8080;
+  const extraPorts = branchConfig ? db.query(
+    "SELECT host_port as hostPort, container_port as containerPort FROM branch_extra_ports WHERE project_branch_id = ?"
+  ).all(branchConfig.id) as { hostPort: number; containerPort: number }[] : [];
 
   const blades = db.query(`
     SELECT b.* FROM project_blades pb
@@ -183,6 +186,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
           imageName: project.name.toLowerCase(),
           port: hostPort,
           containerPort: project.container_port || 3000,
+          extraPorts,
           envVars,
         };
 

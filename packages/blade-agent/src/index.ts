@@ -23,6 +23,7 @@ async function handleDeploy(req: Request): Promise<Response> {
       registry: body.registryHost,
       port: body.port,
       containerPort: body.containerPort,
+      extraPorts: body.extraPorts,
       envVars: body.envVars,
     });
     trackDeploy(body.projectName, body.imageTag);
