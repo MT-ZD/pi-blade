@@ -101,7 +101,13 @@ export const api = {
 				method: 'POST', body: JSON.stringify({ bladeId })
 			}),
 		removeBlade: (projectId: number, bladeId: number) =>
-			request('/projects/' + projectId + '/blades/' + bladeId, { method: 'DELETE' })
+			request('/projects/' + projectId + '/blades/' + bladeId, { method: 'DELETE' }),
+		listVolumes: (projectId: number) => request<any[]>('/projects/' + projectId + '/volumes'),
+		addVolume: (projectId: number, data: { hostPath: string; containerPath: string; readonly?: boolean }) =>
+			request('/projects/' + projectId + '/volumes', { method: 'POST', body: JSON.stringify(data) }),
+		updateVolume: (id: number, data: { hostPath?: string; containerPath?: string; readonly?: boolean }) =>
+			request('/volumes/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+		removeVolume: (id: number) => request('/volumes/' + id, { method: 'DELETE' })
 	},
 	routes: {
 		list: () => request<any[]>('/routes'),

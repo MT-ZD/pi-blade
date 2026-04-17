@@ -57,6 +57,14 @@ function migrate(db: Database) {
       label TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS project_volumes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      host_path TEXT NOT NULL,
+      container_path TEXT NOT NULL,
+      readonly INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS project_vars (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,

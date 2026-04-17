@@ -24,6 +24,7 @@ async function handleDeploy(req: Request): Promise<Response> {
       port: body.port,
       containerPort: body.containerPort,
       extraPorts: body.extraPorts,
+      volumes: body.volumes,
       envVars: body.envVars,
     });
     trackDeploy(body.projectName, body.imageTag);

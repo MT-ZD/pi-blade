@@ -28,6 +28,10 @@
 	let envsOpen = $state(false);
 	let extraPortForms = $state<Record<number, { hostPort: number; containerPort: number; label: string }>>({});
 	let showExtraPortForm = $state<Record<number, boolean>>({});
+
+	let volumes = $state<any[]>([]);
+	let showVolumeForm = $state(false);
+	let volumeForm = $state({ hostPath: '', containerPath: '', readonly: false });
 	let revealedVars = $state(new Set<number>());
 	let deployPage = $state(1);
 	const deployPerPage = 10;
@@ -43,6 +47,7 @@
 		project = await api.projects.get(projectId);
 		vars = await api.projectVars.list(projectId);
 		deploys = await api.deploys.byProject(projectId);
+		volumes = await api.projects.listVolumes(projectId);
 		try {
 			repoBranches = await api.repos.branches(project.repo_id);
 		} catch { repoBranches = []; }
@@ -106,6 +111,23 @@
 
 	async function updateExtraPort(id: number, field: 'hostPort' | 'containerPort' | 'label', value: any) {
 		await api.projects.updateExtraPort(id, { [field]: value });
+	}
+
+	async function addVolume() {
+		if (!volumeForm.hostPath || !volumeForm.containerPath) return;
+		await api.projects.addVolume(projectId, volumeForm);
+		volumeForm = { hostPath: '', containerPath: '', readonly: false };
+		showVolumeForm = false;
+		volumes = await api.projects.listVolumes(projectId);
+	}
+
+	async function updateVolume(id: number, field: 'hostPath' | 'containerPath' | 'readonly', value: any) {
+		await api.projects.updateVolume(id, { [field]: value });
+	}
+
+	async function removeVolume(id: number) {
+		await api.projects.removeVolume(id);
+		volumes = await api.projects.listVolumes(projectId);
 	}
 
 	async function deployBranch(branch: string) {
@@ -355,6 +377,53 @@
 			</table>
 		{:else}
 			<div class="text-muted" style="padding:0.75rem">No blades assigned</div>
+		{/if}
+	</div>
+
+	<!-- Volumes -->
+	<div class="flex justify-between items-center mb-1">
+		<h2>Volumes</h2>
+		<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => showVolumeForm = !showVolumeForm}>
+			{showVolumeForm ? 'Cancel' : '+ Volume'}
+		</button>
+	</div>
+
+	{#if showVolumeForm}
+		<div class="card mb-2">
+			<div class="flex gap-1 items-end">
+				<div style="flex:1"><label class="text-sm text-muted">Host Path</label><input bind:value={volumeForm.hostPath} placeholder="/var/data/myapp or volume_name" /></div>
+				<div style="flex:1"><label class="text-sm text-muted">Container Path</label><input bind:value={volumeForm.containerPath} placeholder="/app/data" /></div>
+				<div class="flex items-center gap-1" style="padding-bottom:0.5rem">
+					<input type="checkbox" bind:checked={volumeForm.readonly} id="vol-ro" style="width:auto" />
+					<label for="vol-ro" class="text-sm">Read-only</label>
+				</div>
+				<button onclick={addVolume} style="margin-bottom:1px">Add</button>
+			</div>
+		</div>
+	{/if}
+
+	<div class="card mb-2">
+		{#if volumes.length > 0}
+			<table>
+				<thead><tr><th>Host Path</th><th>Container Path</th><th>Mode</th><th></th></tr></thead>
+				<tbody>
+					{#each volumes as v}
+						<tr>
+							<td><input value={v.host_path} style="width:100%;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateVolume(v.id, 'hostPath', (e.target as HTMLInputElement).value)} /></td>
+							<td><input value={v.container_path} style="width:100%;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateVolume(v.id, 'containerPath', (e.target as HTMLInputElement).value)} /></td>
+							<td>
+								<label class="flex items-center gap-1 text-sm">
+									<input type="checkbox" checked={!!v.readonly} style="width:auto" onchange={(e) => updateVolume(v.id, 'readonly', (e.target as HTMLInputElement).checked)} />
+									ro
+								</label>
+							</td>
+							<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeVolume(v.id)}>x</button></td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		{:else}
+			<div class="text-muted" style="padding:0.75rem">No volumes configured</div>
 		{/if}
 	</div>
 

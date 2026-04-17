@@ -90,6 +90,7 @@ export interface DeployRequest {
   port: number;
   containerPort: number;
   extraPorts?: { hostPort: number; containerPort: number }[];
+  volumes?: { hostPath: string; containerPath: string; readonly?: boolean }[];
   envVars: Record<string, string>;
 }
 

@@ -107,6 +107,9 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
   const extraPorts = branchConfig ? db.query(
     "SELECT host_port as hostPort, container_port as containerPort FROM branch_extra_ports WHERE project_branch_id = ?"
   ).all(branchConfig.id) as { hostPort: number; containerPort: number }[] : [];
+  const volumes = db.query(
+    "SELECT host_path as hostPath, container_path as containerPath, readonly FROM project_volumes WHERE project_id = ?"
+  ).all(project.id).map((v: any) => ({ hostPath: v.hostPath, containerPath: v.containerPath, readonly: !!v.readonly })) as { hostPath: string; containerPath: string; readonly: boolean }[];
 
   const blades = db.query(`
     SELECT b.* FROM project_blades pb
@@ -187,6 +190,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
           port: hostPort,
           containerPort: project.container_port || 3000,
           extraPorts,
+          volumes,
           envVars,
         };
 

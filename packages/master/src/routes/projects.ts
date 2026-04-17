@@ -185,6 +185,47 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
     return Response.json({ ok: true });
   }
 
+  // GET /api/projects/:id/volumes
+  if (req.method === "GET" && path.match(/^\/api\/projects\/\d+\/volumes$/)) {
+    const projectId = parseInt(path.split("/")[3]);
+    const volumes = db.query(
+      "SELECT id, host_path, container_path, readonly FROM project_volumes WHERE project_id = ? ORDER BY id"
+    ).all(projectId);
+    return Response.json(volumes);
+  }
+
+  // POST /api/projects/:id/volumes
+  if (req.method === "POST" && path.match(/^\/api\/projects\/\d+\/volumes$/)) {
+    const projectId = parseInt(path.split("/")[3]);
+    const body = await req.json() as { hostPath: string; containerPath: string; readonly?: boolean };
+    const result = db.query(
+      "INSERT INTO project_volumes (project_id, host_path, container_path, readonly) VALUES (?, ?, ?, ?)"
+    ).run(projectId, body.hostPath, body.containerPath, body.readonly ? 1 : 0);
+    return Response.json({ ok: true, id: result.lastInsertRowid });
+  }
+
+  // PUT /api/volumes/:id
+  if (req.method === "PUT" && path.match(/^\/api\/volumes\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    const body = await req.json() as { hostPath?: string; containerPath?: string; readonly?: boolean };
+    const existing = db.query("SELECT * FROM project_volumes WHERE id = ?").get(id) as any;
+    if (!existing) return Response.json({ error: "not found" }, { status: 404 });
+    db.query("UPDATE project_volumes SET host_path = ?, container_path = ?, readonly = ? WHERE id = ?").run(
+      body.hostPath ?? existing.host_path,
+      body.containerPath ?? existing.container_path,
+      body.readonly !== undefined ? (body.readonly ? 1 : 0) : existing.readonly,
+      id,
+    );
+    return Response.json({ ok: true });
+  }
+
+  // DELETE /api/volumes/:id
+  if (req.method === "DELETE" && path.match(/^\/api\/volumes\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    db.query("DELETE FROM project_volumes WHERE id = ?").run(id);
+    return Response.json({ ok: true });
+  }
+
   // POST /api/projects/:id/blades — add blade
   if (req.method === "POST" && path.match(/^\/api\/projects\/\d+\/blades$/)) {
     const projectId = parseInt(path.split("/")[3]);

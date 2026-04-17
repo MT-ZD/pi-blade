@@ -27,6 +27,7 @@ export async function startContainer(opts: {
   port: number;
   containerPort?: number;
   extraPorts?: { hostPort: number; containerPort: number }[];
+  volumes?: { hostPath: string; containerPath: string; readonly?: boolean }[];
   envVars: Record<string, string>;
 }): Promise<string> {
   const fullImage = `${opts.registry}/${opts.image}:${opts.tag}`;
@@ -42,6 +43,11 @@ export async function startContainer(opts: {
 
   for (const ep of opts.extraPorts || []) {
     args.push("-p", `${ep.hostPort}:${ep.containerPort}`);
+  }
+
+  for (const v of opts.volumes || []) {
+    const spec = `${v.hostPath}:${v.containerPath}${v.readonly ? ':ro' : ''}`;
+    args.push("-v", spec);
   }
 
   for (const [key, value] of Object.entries(opts.envVars)) {
