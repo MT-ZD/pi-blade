@@ -85,6 +85,21 @@ export async function handleRoutingRoutes(req: Request, path: string): Promise<R
     return Response.json({ ok: true });
   }
 
+  if (req.method === "PUT" && path.match(/^\/api\/upstreams\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    const body = await req.json() as { bladeId?: number; port?: number; weight?: number };
+    const existing = db.query("SELECT * FROM upstreams WHERE id = ?").get(id) as any;
+    if (!existing) return Response.json({ error: "not found" }, { status: 404 });
+    db.query("UPDATE upstreams SET blade_id = ?, port = ?, weight = ? WHERE id = ?").run(
+      body.bladeId ?? existing.blade_id,
+      body.port ?? existing.port,
+      body.weight ?? existing.weight,
+      id,
+    );
+    await regenerateNginxConfig();
+    return Response.json({ ok: true });
+  }
+
   if (req.method === "DELETE" && path.match(/^\/api\/upstreams\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
     db.query("DELETE FROM upstreams WHERE id = ?").run(id);

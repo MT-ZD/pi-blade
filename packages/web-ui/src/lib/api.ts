@@ -115,6 +115,8 @@ export const api = {
 				method: 'POST',
 				body: JSON.stringify(data)
 			}),
+		updateUpstream: (id: number, data: { bladeId?: number; port?: number; weight?: number }) =>
+			request('/upstreams/' + id, { method: 'PUT', body: JSON.stringify(data) }),
 		removeUpstream: (id: number) => request('/upstreams/' + id, { method: 'DELETE' })
 	},
 	projectVars: {

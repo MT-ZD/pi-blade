@@ -73,6 +73,11 @@
 		await refresh();
 	}
 
+	async function updateUpstream(id: number, field: 'bladeId' | 'port' | 'weight', value: any) {
+		await api.routes.updateUpstream(id, { [field]: value });
+		await refresh();
+	}
+
 	async function reloadNginx() {
 		await api.nginx.reload();
 		alert('Nginx reloaded');
@@ -172,9 +177,15 @@
 				<tbody>
 					{#each route.upstreams.filter((u: any) => u.id) as u}
 						<tr>
-							<td>{u.bladeName}</td>
-							<td>{u.port}</td>
-							<td>{u.weight}</td>
+							<td>
+								<select value={u.bladeId} style="font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateUpstream(u.id, 'bladeId', parseInt((e.target as HTMLSelectElement).value))}>
+									{#each blades as b}
+										<option value={b.id}>{b.name}</option>
+									{/each}
+								</select>
+							</td>
+							<td><input type="number" value={u.port} style="width:80px;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateUpstream(u.id, 'port', parseInt((e.target as HTMLInputElement).value))} /></td>
+							<td><input type="number" value={u.weight} style="width:70px;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateUpstream(u.id, 'weight', parseInt((e.target as HTMLInputElement).value))} /></td>
 							<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeUpstream(u.id)}>x</button></td>
 						</tr>
 					{/each}
