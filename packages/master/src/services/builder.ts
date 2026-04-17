@@ -151,17 +151,6 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
       : `${cloneDir}/${project.path}`;
     const dockerfilePath = `${cloneDir}/${project.path}/${project.dockerfile_path}`;
 
-    appendLog(key, `Building image ${imageName}...`);
-    await runCmdWithLog(["docker", "build", "-t", imageName, "-f", dockerfilePath, buildContext], key, signal);
-
-    appendLog(key, `Pushing ${imageName}...`);
-    await runCmdWithLog(["docker", "push", imageName], key, signal);
-
-    db.query(`
-      UPDATE deploys SET status = 'pushing'
-      WHERE image_tag = ? AND project_id = ?
-    `).run(imageTag, project.id);
-
     // Merge global vars + branch-specific vars (branch overrides global)
     const allVars = db.query(
       "SELECT key, value, scope FROM project_vars WHERE project_id = ? AND (scope = 'global' OR scope = ?) ORDER BY scope ASC"
@@ -170,6 +159,21 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
     for (const v of allVars) {
       envVars[v.key] = v.value;
     }
+
+    appendLog(key, `Building image ${imageName}...`);
+    const buildArgs: string[] = [];
+    for (const [k, v] of Object.entries(envVars)) {
+      buildArgs.push("--build-arg", `${k}=${v}`);
+    }
+    await runCmdWithLog(["docker", "build", ...buildArgs, "-t", imageName, "-f", dockerfilePath, buildContext], key, signal);
+
+    appendLog(key, `Pushing ${imageName}...`);
+    await runCmdWithLog(["docker", "push", imageName], key, signal);
+
+    db.query(`
+      UPDATE deploys SET status = 'pushing'
+      WHERE image_tag = ? AND project_id = ?
+    `).run(imageTag, project.id);
 
     let allBladesSucceeded = true;
 
