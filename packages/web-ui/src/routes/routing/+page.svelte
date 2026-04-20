@@ -6,11 +6,12 @@
 	let projects = $state<any[]>([]);
 	let blades = $state<any[]>([]);
 	let showForm = $state(false);
-	let form = $state({ domain: '', projectId: 0, upstreams: [] as { bladeId: number; port: number; weight: number }[] });
+	let form = $state({ domain: '', projectId: 0, clientMaxBodySize: '', upstreams: [] as { bladeId: number; port: number; weight: number }[] });
 
 	let editingRoute = $state<number | null>(null);
 	let editDomain = $state('');
 	let editProjectId = $state(0);
+	let editClientMaxBodySize = $state('');
 	let addingUpstreamTo = $state<number | null>(null);
 	let newUpstream = $state({ bladeId: 0, port: 8080, weight: 1 });
 
@@ -27,7 +28,7 @@
 
 	async function addRoute() {
 		await api.routes.create(form);
-		form = { domain: '', projectId: projects[0]?.id || 0, upstreams: [] };
+		form = { domain: '', projectId: projects[0]?.id || 0, clientMaxBodySize: '', upstreams: [] };
 		showForm = false;
 		await refresh();
 	}
@@ -47,11 +48,16 @@
 		editingRoute = route.id;
 		editDomain = route.domain;
 		editProjectId = route.project_id;
+		editClientMaxBodySize = route.client_max_body_size || '';
 	}
 
 	async function saveEditRoute() {
 		if (editingRoute === null) return;
-		await api.routes.update(editingRoute, { domain: editDomain, projectId: editProjectId });
+		await api.routes.update(editingRoute, {
+			domain: editDomain,
+			projectId: editProjectId,
+			clientMaxBodySize: editClientMaxBodySize || null,
+		});
 		editingRoute = null;
 		await refresh();
 	}
@@ -94,7 +100,7 @@
 
 {#if showForm}
 	<div class="card mb-2">
-		<div class="grid grid-2 gap-2 mb-1">
+		<div class="grid grid-3 gap-2 mb-1">
 			<div>
 				<label class="text-sm text-muted">Domain</label>
 				<input bind:value={form.domain} placeholder="app.example.com" />
@@ -106,6 +112,10 @@
 						<option value={p.id}>{p.name}</option>
 					{/each}
 				</select>
+			</div>
+			<div>
+				<label class="text-sm text-muted">Max Body Size (optional)</label>
+				<input bind:value={form.clientMaxBodySize} placeholder="e.g. 100M" />
 			</div>
 		</div>
 		<div class="mb-1">
@@ -141,6 +151,7 @@
 							<option value={p.id}>{p.name}</option>
 						{/each}
 					</select>
+					<input bind:value={editClientMaxBodySize} placeholder="Max body (e.g. 100M)" style="font-size:0.85rem;width:140px" />
 					<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={saveEditRoute}>Save</button>
 					<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => editingRoute = null}>Cancel</button>
 				</div>
@@ -148,6 +159,9 @@
 				<div>
 					<strong>{route.domain}</strong>
 					<span class="text-muted text-sm"> &rarr; {route.project_name}</span>
+					{#if route.client_max_body_size}
+						<span class="text-muted text-sm">| max body {route.client_max_body_size}</span>
+					{/if}
 				</div>
 				<div class="flex gap-1">
 					<button class="secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => startEditRoute(route)}>Edit</button>

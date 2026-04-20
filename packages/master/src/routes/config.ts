@@ -61,12 +61,13 @@ function exportConfig(): ConfigV1 {
   });
 
   const routes = db.query(`
-    SELECT r.domain, p.name as project_name, r.id as route_id
+    SELECT r.domain, p.name as project_name, r.id as route_id, r.client_max_body_size
     FROM routes r JOIN projects p ON p.id = r.project_id
   `).all() as any[];
   const exportRoutes = routes.map((r) => ({
     domain: r.domain,
     project_name: r.project_name,
+    client_max_body_size: r.client_max_body_size,
     upstreams: (db.query(`
       SELECT b.name as blade_name, u.port, u.weight
       FROM upstreams u JOIN blades b ON b.id = u.blade_id
@@ -276,9 +277,9 @@ function applyConfig(config: any, conflictStrategy: string): { ok: boolean; erro
 
       if (existingRoute) {
         db.query("DELETE FROM upstreams WHERE route_id = ?").run(existingRoute.id);
-        db.query("UPDATE routes SET project_id = ? WHERE id = ?").run(proj.id, existingRoute.id);
+        db.query("UPDATE routes SET project_id = ?, client_max_body_size = ? WHERE id = ?").run(proj.id, route.client_max_body_size || null, existingRoute.id);
       } else {
-        const result = db.query("INSERT INTO routes (domain, project_id) VALUES (?, ?)").run(route.domain, proj.id);
+        const result = db.query("INSERT INTO routes (domain, project_id, client_max_body_size) VALUES (?, ?, ?)").run(route.domain, proj.id, route.client_max_body_size || null);
         existingRoute = { id: Number(result.lastInsertRowid) };
       }
 

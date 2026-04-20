@@ -94,7 +94,8 @@ function migrate(db: Database) {
     CREATE TABLE IF NOT EXISTS routes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       domain TEXT NOT NULL,
-      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      client_max_body_size TEXT
     );
 
     CREATE TABLE IF NOT EXISTS upstreams (
@@ -158,6 +159,10 @@ function migrate(db: Database) {
 
   try {
     db.exec("ALTER TABLE deploys ADD COLUMN trigger TEXT DEFAULT 'manual'");
+  } catch (_) {}
+
+  try {
+    db.exec("ALTER TABLE routes ADD COLUMN client_max_body_size TEXT");
   } catch (_) {}
 
   // Fix stale running deploys — keep only latest running per project+branch+blade

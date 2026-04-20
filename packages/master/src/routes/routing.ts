@@ -31,12 +31,13 @@ export async function handleRoutingRoutes(req: Request, path: string): Promise<R
     const body = await req.json() as {
       domain: string;
       projectId: number;
+      clientMaxBodySize?: string;
       upstreams?: { bladeId: number; port: number; weight?: number }[];
     };
 
     const result = db.query(
-      "INSERT INTO routes (domain, project_id) VALUES (?1, ?2)"
-    ).run(body.domain, body.projectId);
+      "INSERT INTO routes (domain, project_id, client_max_body_size) VALUES (?1, ?2, ?3)"
+    ).run(body.domain, body.projectId, body.clientMaxBodySize || null);
 
     const routeId = result.lastInsertRowid;
 
@@ -55,13 +56,14 @@ export async function handleRoutingRoutes(req: Request, path: string): Promise<R
 
   if (req.method === "PUT" && path.match(/^\/api\/routes\/\d+$/)) {
     const id = parseInt(path.split("/").pop()!);
-    const body = await req.json() as { domain?: string; projectId?: number };
+    const body = await req.json() as { domain?: string; projectId?: number; clientMaxBodySize?: string | null };
     const existing = db.query("SELECT * FROM routes WHERE id = ?").get(id) as any;
     if (!existing) return Response.json({ error: "not found" }, { status: 404 });
 
-    db.query("UPDATE routes SET domain = ?1, project_id = ?2 WHERE id = ?3").run(
+    db.query("UPDATE routes SET domain = ?1, project_id = ?2, client_max_body_size = ?3 WHERE id = ?4").run(
       body.domain ?? existing.domain,
       body.projectId ?? existing.project_id,
+      body.clientMaxBodySize !== undefined ? (body.clientMaxBodySize || null) : existing.client_max_body_size,
       id,
     );
     await regenerateNginxConfig();

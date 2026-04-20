@@ -6,7 +6,7 @@ export async function regenerateNginxConfig() {
   const db = getDb();
 
   const routes = db.query(`
-    SELECT r.id, r.domain, r.project_id
+    SELECT r.id, r.domain, r.project_id, r.client_max_body_size
     FROM routes r
     ORDER BY r.domain
   `).all() as any[];
@@ -33,8 +33,11 @@ export async function regenerateNginxConfig() {
 
     config += `server {\n`;
     config += `    listen 80;\n`;
-    config += `    server_name ${route.domain};\n\n`;
-    config += `    location / {\n`;
+    config += `    server_name ${route.domain};\n`;
+    if (route.client_max_body_size) {
+      config += `    client_max_body_size ${route.client_max_body_size};\n`;
+    }
+    config += `\n    location / {\n`;
     config += `        proxy_pass http://${upstreamName};\n`;
     config += `        proxy_set_header Host $host;\n`;
     config += `        proxy_set_header X-Real-IP $remote_addr;\n`;
