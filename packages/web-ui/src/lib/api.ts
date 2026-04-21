@@ -107,7 +107,13 @@ export const api = {
 			request('/projects/' + projectId + '/volumes', { method: 'POST', body: JSON.stringify(data) }),
 		updateVolume: (id: number, data: { hostPath?: string; containerPath?: string; readonly?: boolean }) =>
 			request('/volumes/' + id, { method: 'PUT', body: JSON.stringify(data) }),
-		removeVolume: (id: number) => request('/volumes/' + id, { method: 'DELETE' })
+		removeVolume: (id: number) => request('/volumes/' + id, { method: 'DELETE' }),
+		listMetaVars: (projectId: number) => request<any[]>('/projects/' + projectId + '/meta-vars'),
+		addMetaVar: (projectId: number, data: { envKey: string; source: string }) =>
+			request('/projects/' + projectId + '/meta-vars', { method: 'POST', body: JSON.stringify(data) }),
+		updateMetaVar: (id: number, data: { envKey?: string; source?: string }) =>
+			request('/meta-vars/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+		removeMetaVar: (id: number) => request('/meta-vars/' + id, { method: 'DELETE' })
 	},
 	routes: {
 		list: () => request<any[]>('/routes'),

@@ -156,8 +156,7 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
       "SELECT key, value, scope FROM project_vars WHERE project_id = ? AND (scope = 'global' OR scope = ?) ORDER BY scope ASC"
     ).all(project.id, deployBranch) as any[];
 
-    // Template variable substitution
-    const templateVars: Record<string, string> = {
+    const metaSources: Record<string, string> = {
       commit_sha: commitSha,
       commit_short: commitSha.slice(0, 12),
       branch: deployBranch,
@@ -165,12 +164,16 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
       build_time: new Date().toISOString(),
       project_name: project.name,
     };
-    const substitute = (s: string): string =>
-      s.replace(/\{\{(\w+)\}\}/g, (m, k) => templateVars[k] ?? m);
+    const metaMappings = db.query(
+      "SELECT env_key, source FROM project_meta_vars WHERE project_id = ?"
+    ).all(project.id) as any[];
 
     const envVars: Record<string, string> = {};
+    for (const m of metaMappings) {
+      if (metaSources[m.source] !== undefined) envVars[m.env_key] = metaSources[m.source];
+    }
     for (const v of allVars) {
-      envVars[v.key] = substitute(v.value);
+      envVars[v.key] = v.value;
     }
 
     appendLog(key, `Building image ${imageName}...`);

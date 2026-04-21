@@ -30,6 +30,17 @@
 	let showExtraPortForm = $state<Record<number, boolean>>({});
 
 	let volumes = $state<any[]>([]);
+	let metaVars = $state<any[]>([]);
+	let showMetaVarForm = $state(false);
+	let metaVarForm = $state({ envKey: '', source: 'commit_short' });
+	const META_SOURCES = [
+		{ value: 'commit_sha', label: 'Commit SHA (full)' },
+		{ value: 'commit_short', label: 'Commit SHA (12 char)' },
+		{ value: 'branch', label: 'Branch name' },
+		{ value: 'image_tag', label: 'Image tag' },
+		{ value: 'build_time', label: 'Build timestamp (ISO)' },
+		{ value: 'project_name', label: 'Project name' },
+	];
 	let showVolumeForm = $state(false);
 	let volumeForm = $state({ hostPath: '', containerPath: '', readonly: false });
 	let revealedVars = $state(new Set<number>());
@@ -48,6 +59,7 @@
 		vars = await api.projectVars.list(projectId);
 		deploys = await api.deploys.byProject(projectId);
 		volumes = await api.projects.listVolumes(projectId);
+		metaVars = await api.projects.listMetaVars(projectId);
 		try {
 			repoBranches = await api.repos.branches(project.repo_id);
 		} catch { repoBranches = []; }
@@ -128,6 +140,23 @@
 	async function removeVolume(id: number) {
 		await api.projects.removeVolume(id);
 		volumes = await api.projects.listVolumes(projectId);
+	}
+
+	async function addMetaVar() {
+		if (!metaVarForm.envKey) return;
+		await api.projects.addMetaVar(projectId, metaVarForm);
+		metaVarForm = { envKey: '', source: 'commit_short' };
+		showMetaVarForm = false;
+		metaVars = await api.projects.listMetaVars(projectId);
+	}
+
+	async function updateMetaVar(id: number, field: 'envKey' | 'source', value: string) {
+		await api.projects.updateMetaVar(id, { [field]: value });
+	}
+
+	async function removeMetaVar(id: number) {
+		await api.projects.removeMetaVar(id);
+		metaVars = await api.projects.listMetaVars(projectId);
 	}
 
 	async function deployBranch(branch: string) {
@@ -466,6 +495,47 @@
 				<button onclick={addVar}>Add</button>
 			</div>
 		{/if}
+
+		<div class="card mb-2">
+			<div class="flex justify-between items-center mb-1">
+				<h3 style="font-size:0.9rem">Build Metadata</h3>
+				<button class="secondary" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => showMetaVarForm = !showMetaVarForm}>
+					{showMetaVarForm ? 'Cancel' : '+ Map'}
+				</button>
+			</div>
+			<p class="text-sm text-muted mb-1">Inject build info (SHA, branch, etc) into your chosen env var names.</p>
+			{#if showMetaVarForm}
+				<div class="flex gap-1 items-end mb-1" style="padding:0.5rem;background:var(--bg);border-radius:4px">
+					<div style="flex:1"><label class="text-sm text-muted">Env Key</label><input bind:value={metaVarForm.envKey} placeholder="APP_VERSION" /></div>
+					<div style="flex:1"><label class="text-sm text-muted">Source</label>
+						<select bind:value={metaVarForm.source}>
+							{#each META_SOURCES as s}<option value={s.value}>{s.label}</option>{/each}
+						</select>
+					</div>
+					<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={addMetaVar}>Add</button>
+				</div>
+			{/if}
+			{#if metaVars.length > 0}
+				<table>
+					<thead><tr><th>Env Key</th><th>Source</th><th></th></tr></thead>
+					<tbody>
+						{#each metaVars as m}
+							<tr>
+								<td><input value={m.env_key} style="width:100%;font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateMetaVar(m.id, 'envKey', (e.target as HTMLInputElement).value)} /></td>
+								<td>
+									<select value={m.source} style="font-size:0.8rem;padding:0.2rem 0.3rem" onchange={(e) => updateMetaVar(m.id, 'source', (e.target as HTMLSelectElement).value)}>
+										{#each META_SOURCES as s}<option value={s.value}>{s.label}</option>{/each}
+									</select>
+								</td>
+								<td><button class="danger" style="font-size:0.7rem;padding:0.2rem 0.4rem" onclick={() => removeMetaVar(m.id)}>x</button></td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{:else}
+				<div class="text-muted text-sm" style="padding:0.5rem">No mappings — metadata unused</div>
+			{/if}
+		</div>
 
 		<div class="card mb-2">
 			<h3 class="mb-1" style="font-size:0.9rem">Global</h3>

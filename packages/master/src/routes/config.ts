@@ -50,6 +50,7 @@ function exportConfig(): ConfigV1 {
           extra_ports: db.query("SELECT host_port, container_port, label FROM branch_extra_ports WHERE project_branch_id = ?").all(b.id) as any[],
         })),
         volumes: db.query("SELECT host_path, container_path, readonly FROM project_volumes WHERE project_id = ?").all(p.id) as any[],
+        meta_vars: db.query("SELECT env_key, source FROM project_meta_vars WHERE project_id = ?").all(p.id) as any[],
         vars: db.query("SELECT key, value, scope FROM project_vars WHERE project_id = ? ORDER BY scope, key").all(p.id) as any[],
         blade_names: (db.query(`
           SELECT b.name FROM project_blades pb
@@ -229,6 +230,7 @@ function applyConfig(config: any, conflictStrategy: string): { ok: boolean; erro
           db.query("DELETE FROM project_vars WHERE project_id = ?").run(existingProj.id);
           db.query("DELETE FROM project_blades WHERE project_id = ?").run(existingProj.id);
           db.query("DELETE FROM project_volumes WHERE project_id = ?").run(existingProj.id);
+          db.query("DELETE FROM project_meta_vars WHERE project_id = ?").run(existingProj.id);
           projectId = existingProj.id;
         } else {
           const result = db.query("INSERT INTO projects (repo_id, name, path, dockerfile_path, container_port, build_context) VALUES (?, ?, ?, ?, ?, ?)")
@@ -262,6 +264,10 @@ function applyConfig(config: any, conflictStrategy: string): { ok: boolean; erro
           for (const v of proj.volumes || []) {
             db.query("INSERT INTO project_volumes (project_id, host_path, container_path, readonly) VALUES (?, ?, ?, ?)")
               .run(projectId, v.host_path, v.container_path, v.readonly ? 1 : 0);
+          }
+          for (const m of proj.meta_vars || []) {
+            db.query("INSERT INTO project_meta_vars (project_id, env_key, source) VALUES (?, ?, ?)")
+              .run(projectId, m.env_key, m.source);
           }
         }
       }

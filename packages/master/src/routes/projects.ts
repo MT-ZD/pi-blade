@@ -185,6 +185,44 @@ export async function handleProjectRoutes(req: Request, path: string): Promise<R
     return Response.json({ ok: true });
   }
 
+  // GET /api/projects/:id/meta-vars
+  if (req.method === "GET" && path.match(/^\/api\/projects\/\d+\/meta-vars$/)) {
+    const projectId = parseInt(path.split("/")[3]);
+    const rows = db.query("SELECT id, env_key, source FROM project_meta_vars WHERE project_id = ? ORDER BY id").all(projectId);
+    return Response.json(rows);
+  }
+
+  // POST /api/projects/:id/meta-vars
+  if (req.method === "POST" && path.match(/^\/api\/projects\/\d+\/meta-vars$/)) {
+    const projectId = parseInt(path.split("/")[3]);
+    const body = await req.json() as { envKey: string; source: string };
+    const result = db.query(
+      "INSERT INTO project_meta_vars (project_id, env_key, source) VALUES (?, ?, ?)"
+    ).run(projectId, body.envKey, body.source);
+    return Response.json({ ok: true, id: result.lastInsertRowid });
+  }
+
+  // PUT /api/meta-vars/:id
+  if (req.method === "PUT" && path.match(/^\/api\/meta-vars\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    const body = await req.json() as { envKey?: string; source?: string };
+    const existing = db.query("SELECT * FROM project_meta_vars WHERE id = ?").get(id) as any;
+    if (!existing) return Response.json({ error: "not found" }, { status: 404 });
+    db.query("UPDATE project_meta_vars SET env_key = ?, source = ? WHERE id = ?").run(
+      body.envKey ?? existing.env_key,
+      body.source ?? existing.source,
+      id,
+    );
+    return Response.json({ ok: true });
+  }
+
+  // DELETE /api/meta-vars/:id
+  if (req.method === "DELETE" && path.match(/^\/api\/meta-vars\/\d+$/)) {
+    const id = parseInt(path.split("/").pop()!);
+    db.query("DELETE FROM project_meta_vars WHERE id = ?").run(id);
+    return Response.json({ ok: true });
+  }
+
   // GET /api/projects/:id/volumes
   if (req.method === "GET" && path.match(/^\/api\/projects\/\d+\/volumes$/)) {
     const projectId = parseInt(path.split("/")[3]);

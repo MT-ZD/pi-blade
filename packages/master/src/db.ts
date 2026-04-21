@@ -65,6 +65,13 @@ function migrate(db: Database) {
       readonly INTEGER NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS project_meta_vars (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      env_key TEXT NOT NULL,
+      source TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS project_vars (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
