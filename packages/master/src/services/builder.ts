@@ -155,9 +155,22 @@ export async function buildAndDeploy(project: any, repo: any, commitSha: string,
     const allVars = db.query(
       "SELECT key, value, scope FROM project_vars WHERE project_id = ? AND (scope = 'global' OR scope = ?) ORDER BY scope ASC"
     ).all(project.id, deployBranch) as any[];
+
+    // Template variable substitution
+    const templateVars: Record<string, string> = {
+      commit_sha: commitSha,
+      commit_short: commitSha.slice(0, 12),
+      branch: deployBranch,
+      image_tag: imageTag,
+      build_time: new Date().toISOString(),
+      project_name: project.name,
+    };
+    const substitute = (s: string): string =>
+      s.replace(/\{\{(\w+)\}\}/g, (m, k) => templateVars[k] ?? m);
+
     const envVars: Record<string, string> = {};
     for (const v of allVars) {
-      envVars[v.key] = v.value;
+      envVars[v.key] = substitute(v.value);
     }
 
     appendLog(key, `Building image ${imageName}...`);
