@@ -31,6 +31,27 @@
 		if (selectedProject) vars = await api.projectVars.list(selectedProject.id);
 	}
 
+	async function exportEnv() {
+		if (!selectedProject) return;
+		const token = document.cookie.match(/(?:^|; )pi_blade_token=([^;]*)/);
+		const headers: Record<string, string> = {};
+		if (token) headers['Authorization'] = `Bearer ${decodeURIComponent(token[1])}`;
+		const res = await fetch(`/api/projects/${selectedProject.id}/vars/export`, { headers });
+		if (!res.ok) return;
+		const blob = await res.blob();
+		const cd = res.headers.get('Content-Disposition') || '';
+		const m = cd.match(/filename="([^"]+)"/);
+		const filename = m ? m[1] : `${selectedProject.name}.env`;
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	}
+
 	$effect(() => {
 		if (selectedProject) {
 			varForm.scope = 'global';
@@ -60,9 +81,12 @@
 {#if selectedProject}
 	<div class="flex justify-between items-center mb-1">
 		<h3>Variables for {selectedProject.name}</h3>
-		<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => showVarForm = !showVarForm}>
-			{showVarForm ? 'Cancel' : '+ Variable'}
-		</button>
+		<div class="flex gap-1">
+			<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={exportEnv}>Export .env</button>
+			<button style="font-size:0.75rem;padding:0.3rem 0.6rem" onclick={() => showVarForm = !showVarForm}>
+				{showVarForm ? 'Cancel' : '+ Variable'}
+			</button>
+		</div>
 	</div>
 
 	{#if showVarForm}
